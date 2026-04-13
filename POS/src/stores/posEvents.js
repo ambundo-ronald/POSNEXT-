@@ -265,6 +265,7 @@ export const usePOSEventsStore = defineStore('posEvents', () => {
 			'allow_return',
 			'allow_write_off_change',
 			'allow_partial_payment',
+			'sms_payment_reconciliation_mode',
 			'silent_print'
 		]
 		const salesChanges = salesFields.filter(field => field in changes)

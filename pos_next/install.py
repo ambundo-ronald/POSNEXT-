@@ -171,7 +171,8 @@ def install_custom_field(doc_dict, quiet=False):
 			# Don't override everything to preserve other app's customizations
 			update_fields = [
 				"description", "in_standard_filter", "label",
-				"options", "fieldtype", "insert_after"
+				"options", "fieldtype", "insert_after", "allow_on_submit",
+				"no_copy", "print_hide", "read_only"
 			]
 
 			updated = False

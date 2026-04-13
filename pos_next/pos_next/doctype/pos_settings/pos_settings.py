@@ -20,6 +20,9 @@ class POSSettings(Document):
 			if search_limit <= 0:
 				frappe.throw("Search Limit must be greater than 0")
 
+		if self.sms_payment_reconciliation_mode not in ("Manual", "Suggested", "Auto"):
+			frappe.throw("SMS Payment Reconciliation must be Manual, Suggested, or Auto")
+
 	def on_update(self):
 		"""Sync allow_negative_stock with Stock Settings"""
 		self.sync_negative_stock_setting()
@@ -117,6 +120,7 @@ def create_default_settings(pos_profile):
 	doc = frappe.new_doc("POS Settings")
 	doc.pos_profile = pos_profile
 	doc.enabled = 1
+	doc.sms_payment_reconciliation_mode = "Manual"
 	doc.insert()
 
 	return doc.as_dict()

@@ -534,6 +534,7 @@
 		:currency="currency"
 		:is-offline="false"
 		:allow-partial-payment="true"
+		:customer="selectedInvoice?.customer"
 		@payment-completed="handlePaymentCompleted"
 	/>
 </template>
@@ -849,10 +850,33 @@ async function handlePaymentCompleted(paymentData) {
 	if (!selectedInvoice.value) return
 
 	try {
+		const mpesaPayments = Array.isArray(paymentData.mpesa_payments)
+			? paymentData.mpesa_payments
+			: []
+		const smsEnablerPayments = Array.isArray(paymentData.sms_enabler_payments)
+			? paymentData.sms_enabler_payments
+			: []
+
 		await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {
 			invoice_name: selectedInvoice.value.name,
 			payments: paymentData.payments,
 		})
+
+		if (mpesaPayments.length > 0) {
+			await call("pos_next.api.mpesa.process_sales_invoice_payments", {
+				invoice: selectedInvoice.value.name,
+				customer: selectedInvoice.value.customer,
+				mpesa_payments: mpesaPayments,
+			})
+		}
+
+		if (smsEnablerPayments.length > 0) {
+			await call("pos_next.api.smsenabler_mpesa.process_sales_invoice_payments", {
+				invoice: selectedInvoice.value.name,
+				customer: selectedInvoice.value.customer,
+				sms_payments: smsEnablerPayments,
+			})
+		}
 
 		showSuccess(__("Payment added successfully"))
 

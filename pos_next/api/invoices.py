@@ -316,7 +316,7 @@ def update_invoice(data):
         data.setdefault("doctype", doctype)
 
         # Create or update invoice
-        if data.get("name"):
+        if data.get("name") and frappe.db.exists(doctype, data.get("name")):
             invoice_doc = frappe.get_doc(doctype, data.get("name"))
             invoice_doc.update(data)
         else:

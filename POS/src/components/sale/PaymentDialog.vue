@@ -338,6 +338,325 @@
 					</div>
 				</div>
 
+				<!-- POS M-Pesa Quick Pay -->
+				<div
+					v-if="!isOffline && (checkingMpesa || mpesaAvailable)"
+					class="rounded-lg border border-green-200 bg-green-50 p-3"
+				>
+					<div class="flex items-center justify-between gap-3">
+						<div class="flex items-center gap-2">
+							<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-green-600 text-white">
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+								</svg>
+							</div>
+							<div>
+								<div class="text-xs font-bold text-green-900">{{ __('Quick Pay - POS M-Pesa') }}</div>
+								<div class="text-[11px] text-green-700">
+									<span v-if="checkingMpesa">{{ __('Checking M-Pesa setup...') }}</span>
+									<span v-else>{{ __('Search M-Pesa C2B register payments and add them to this sale') }}</span>
+								</div>
+							</div>
+						</div>
+						<button
+							v-if="mpesaAvailable"
+							@click="toggleMpesaPanel"
+							class="h-9 rounded-lg bg-green-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-green-700"
+						>
+							{{ showMpesaPanel ? __('Hide') : __('Find Payments') }}
+						</button>
+					</div>
+
+					<div v-if="mpesaAvailable" class="mt-3 grid gap-2 rounded-lg border border-green-200 bg-white p-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+						<div>
+							<label class="mb-1 block text-[11px] font-semibold text-green-900">
+								{{ __('Customer Phone') }}
+							</label>
+							<input
+								v-model="mpesaStkPhone"
+								type="tel"
+								:placeholder="__('2547XXXXXXXX')"
+								class="w-full rounded-lg border border-green-200 px-3 py-2 text-xs focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+							/>
+						</div>
+						<div class="rounded-lg bg-green-50 px-3 py-2 text-xs">
+							<div class="font-semibold text-green-900">{{ __('Request Amount') }}</div>
+							<div class="font-bold text-green-700">{{ formatCurrency(mpesaStkAmount) }}</div>
+						</div>
+						<button
+							@click="requestMpesaStkPayment"
+							:disabled="sendingMpesaStk || pollingMpesaStk || !mpesaStkAmount"
+							:class="[
+								'h-9 rounded-lg px-3 text-xs font-semibold transition-colors',
+								sendingMpesaStk || pollingMpesaStk || !mpesaStkAmount
+									? 'cursor-not-allowed bg-green-200 text-white'
+									: 'bg-green-600 text-white hover:bg-green-700'
+							]"
+						>
+							{{ sendingMpesaStk ? __('Requesting...') : pollingMpesaStk ? __('Waiting...') : __('Request Pay') }}
+						</button>
+					</div>
+
+					<div
+						v-if="mpesaStkRequest || mpesaStkMatch"
+						class="mt-3 rounded-lg border border-green-200 bg-white p-3"
+					>
+						<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+							<div>
+								<div class="text-xs font-bold text-green-900">
+									{{ mpesaStkMatch ? __('M-Pesa payment received') : __('STK request sent') }}
+								</div>
+								<div class="text-[11px] text-green-700">
+									{{ mpesaStkStatusMessage }}
+								</div>
+								<div v-if="mpesaStkRequest?.invoice" class="mt-1 text-[11px] text-gray-500">
+									{{ __('Invoice: {0}', [mpesaStkRequest.invoice]) }}
+								</div>
+							</div>
+							<button
+								v-if="mpesaStkMatch"
+								@click="addDetectedMpesaPayment"
+								:disabled="isMpesaAlreadyAdded(mpesaStkMatch.name)"
+								class="h-9 rounded-lg bg-green-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-200"
+							>
+								{{ isMpesaAlreadyAdded(mpesaStkMatch.name) ? __('Added') : __('Add Payment') }}
+							</button>
+						</div>
+					</div>
+
+					<div v-if="showMpesaPanel" class="mt-3 rounded-lg border border-green-200 bg-white p-3">
+						<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+							<div class="relative flex-1">
+								<input
+									v-model="mpesaSearch"
+									type="text"
+									:placeholder="__('Search C2B name, phone, transaction ID (min 3 chars)')"
+									class="w-full rounded-lg border border-green-200 px-3 py-2 ps-8 text-xs focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+									@input="handleMpesaSearchInput"
+								/>
+								<svg class="absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+								</svg>
+							</div>
+							<div class="rounded-lg bg-green-100 px-3 py-2 text-xs font-semibold text-green-800">
+								{{ __('{0} pending', [mpesaPendingCount]) }}
+							</div>
+						</div>
+
+						<div class="mt-3 max-h-56 overflow-y-auto rounded-lg border border-gray-200">
+							<div v-if="loadingMpesaPayments" class="flex items-center justify-center gap-2 p-4 text-xs text-gray-500">
+								<div class="h-4 w-4 animate-spin rounded-full border-b-2 border-green-600"></div>
+								<span>{{ __('Loading M-Pesa payments...') }}</span>
+							</div>
+							<div v-else-if="mpesaPendingCount === 0" class="p-4 text-center text-xs text-gray-500">
+								{{ __('No pending M-Pesa payments found') }}
+							</div>
+							<div
+								v-else-if="mpesaSearch.trim().length < 3"
+								class="p-4 text-center text-xs text-gray-500"
+							>
+								{{ __('Enter at least 3 characters to search pending payments') }}
+							</div>
+							<div v-else-if="mpesaPayments.length === 0" class="p-4 text-center text-xs text-gray-500">
+								{{ __('No matching M-Pesa payments') }}
+							</div>
+							<template v-else>
+								<button
+									v-for="payment in mpesaPayments"
+									:key="payment.name"
+									@click="toggleMpesaPayment(payment)"
+									:disabled="isMpesaAlreadyAdded(payment.name)"
+									:class="[
+										'flex w-full items-center gap-3 border-b border-gray-100 p-3 text-start last:border-b-0 transition-colors',
+										isMpesaAlreadyAdded(payment.name)
+											? 'cursor-not-allowed bg-gray-50 opacity-60'
+											: isMpesaSelected(payment.name)
+											? 'bg-green-50'
+											: 'hover:bg-green-50'
+									]"
+								>
+									<input
+										type="checkbox"
+										:checked="isMpesaSelected(payment.name) || isMpesaAlreadyAdded(payment.name)"
+										:disabled="isMpesaAlreadyAdded(payment.name)"
+										class="h-4 w-4 accent-green-600"
+										@click.stop="toggleMpesaPayment(payment)"
+									/>
+									<div class="min-w-0 flex-1">
+										<div class="flex items-center justify-between gap-2">
+											<div class="truncate text-xs font-semibold text-gray-900">
+												{{ payment.full_name || __('Unknown') }}
+											</div>
+											<div class="text-xs font-bold text-green-700">
+												{{ formatCurrency(payment.transamount) }}
+											</div>
+										</div>
+										<div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
+											<span>{{ payment.msisdn || __('No phone') }}</span>
+											<span>{{ payment.transid || payment.name }}</span>
+											<span v-if="payment.billrefnumber">{{ payment.billrefnumber }}</span>
+											<span v-if="payment.match_score" class="font-semibold text-green-700">
+												{{ payment.match_level }} - {{ payment.match_reasons?.join(', ') }}
+											</span>
+										</div>
+									</div>
+								</button>
+							</template>
+						</div>
+
+						<div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+							<div class="text-xs text-gray-600">
+								{{ __('Selected: {0} payment(s), {1}', [selectedMpesaPayments.length, formatCurrency(selectedMpesaTotal)]) }}
+							</div>
+							<button
+								@click="addSelectedMpesaPayments"
+								:disabled="selectedMpesaPayments.length === 0"
+								:class="[
+									'h-9 rounded-lg px-3 text-xs font-semibold transition-colors',
+									selectedMpesaPayments.length === 0
+										? 'cursor-not-allowed bg-green-200 text-white'
+										: 'bg-green-600 text-white hover:bg-green-700'
+								]"
+							>
+								{{ __('Add Selected') }}
+							</button>
+						</div>
+					</div>
+				</div>
+
+				<!-- SMS Enabler Quick Pay -->
+				<div
+					v-if="!isOffline && (checkingSmsEnabler || smsEnablerAvailable)"
+					class="rounded-lg border border-emerald-200 bg-emerald-50 p-3"
+				>
+					<div class="flex items-center justify-between gap-3">
+						<div class="flex items-center gap-2">
+							<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white">
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 4v-4z"/>
+								</svg>
+							</div>
+							<div>
+								<div class="text-xs font-bold text-emerald-900">{{ __('Quick Pay - SMS Enabler') }}</div>
+								<div class="text-[11px] text-emerald-700">
+									<span v-if="checkingSmsEnabler">{{ __('Checking SMS Enabler setup...') }}</span>
+									<span v-else>{{ __('Use bank paybill SMS payments from SMS Enabler') }}</span>
+								</div>
+							</div>
+						</div>
+						<button
+							v-if="smsEnablerAvailable"
+							@click="toggleSmsEnablerPanel"
+							class="h-9 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-emerald-700"
+						>
+							{{ showSmsEnablerPanel ? __('Hide') : __('Find SMS Payments') }}
+						</button>
+					</div>
+
+					<div v-if="showSmsEnablerPanel" class="mt-3 rounded-lg border border-emerald-200 bg-white p-3">
+						<div class="mb-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+							{{ __('Mode: {0}', [smsReconciliationMode]) }}
+						</div>
+						<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+							<div class="relative flex-1">
+								<input
+									v-model="smsEnablerSearch"
+									type="text"
+									:placeholder="__('Search SMS payer, phone, transaction ID, account (min 3 chars)')"
+									class="w-full rounded-lg border border-emerald-200 px-3 py-2 ps-8 text-xs focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+									@input="handleSmsEnablerSearchInput"
+								/>
+								<svg class="absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+								</svg>
+							</div>
+							<div class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800">
+								{{ __('{0} pending', [smsEnablerPendingCount]) }}
+							</div>
+						</div>
+
+						<div class="mt-3 max-h-56 overflow-y-auto rounded-lg border border-gray-200">
+							<div v-if="loadingSmsEnablerPayments" class="flex items-center justify-center gap-2 p-4 text-xs text-gray-500">
+								<div class="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-600"></div>
+								<span>{{ __('Loading SMS payments...') }}</span>
+							</div>
+							<div v-else-if="smsEnablerPendingCount === 0" class="p-4 text-center text-xs text-gray-500">
+								{{ __('No pending SMS payments found') }}
+							</div>
+							<div
+								v-else-if="smsEnablerSearch.trim().length < 3 && !(smsReconciliationMode !== 'Manual' && smsEnablerPayments.length > 0)"
+								class="p-4 text-center text-xs text-gray-500"
+							>
+								{{ __('Enter at least 3 characters to search pending SMS payments') }}
+							</div>
+							<div v-else-if="smsEnablerPayments.length === 0" class="p-4 text-center text-xs text-gray-500">
+								{{ __('No matching SMS payments') }}
+							</div>
+							<template v-else>
+								<button
+									v-for="payment in smsEnablerPayments"
+									:key="payment.name"
+									@click="toggleSmsEnablerPayment(payment)"
+									:disabled="isSmsEnablerAlreadyAdded(payment.name)"
+									:class="[
+										'flex w-full items-center gap-3 border-b border-gray-100 p-3 text-start last:border-b-0 transition-colors',
+										isSmsEnablerAlreadyAdded(payment.name)
+											? 'cursor-not-allowed bg-gray-50 opacity-60'
+											: isSmsEnablerSelected(payment.name)
+											? 'bg-emerald-50'
+											: 'hover:bg-emerald-50'
+									]"
+								>
+									<input
+										type="checkbox"
+										:checked="isSmsEnablerSelected(payment.name) || isSmsEnablerAlreadyAdded(payment.name)"
+										:disabled="isSmsEnablerAlreadyAdded(payment.name)"
+										class="h-4 w-4 accent-emerald-600"
+										@click.stop="toggleSmsEnablerPayment(payment)"
+									/>
+									<div class="min-w-0 flex-1">
+										<div class="flex items-center justify-between gap-2">
+											<div class="truncate text-xs font-semibold text-gray-900">
+												{{ payment.payer_name || payment.source || __('Unknown') }}
+											</div>
+											<div class="text-xs font-bold text-emerald-700">
+												{{ formatCurrency(payment.amount) }}
+											</div>
+										</div>
+										<div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
+											<span>{{ payment.source || __('SMS') }}</span>
+											<span>{{ payment.payer_phone || payment.sender || __('No phone') }}</span>
+											<span>{{ payment.transaction_id || payment.name }}</span>
+											<span v-if="payment.account_reference">{{ payment.account_reference }}</span>
+											<span v-if="payment.match_score" class="font-semibold text-emerald-700">
+												{{ payment.match_level }} - {{ payment.match_reasons?.join(', ') }}
+											</span>
+										</div>
+									</div>
+								</button>
+							</template>
+						</div>
+
+						<div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+							<div class="text-xs text-gray-600">
+								{{ __('Selected: {0} payment(s), {1}', [selectedSmsEnablerPayments.length, formatCurrency(selectedSmsEnablerTotal)]) }}
+							</div>
+							<button
+								@click="addSelectedSmsEnablerPayments"
+								:disabled="selectedSmsEnablerPayments.length === 0"
+								:class="[
+									'h-9 rounded-lg px-3 text-xs font-semibold transition-colors',
+									selectedSmsEnablerPayments.length === 0
+										? 'cursor-not-allowed bg-emerald-200 text-white'
+										: 'bg-emerald-600 text-white hover:bg-emerald-700'
+								]"
+							>
+								{{ __('Add Selected SMS') }}
+							</button>
+						</div>
+					</div>
+				</div>
+
 				<!-- Payment Methods Grid -->
 				<div class="text-start mb-3">
 					<h3 class="text-sm font-semibold text-gray-700 mb-1">{{ __('Payment Methods') }}</h3>
@@ -451,7 +770,13 @@
 								<span class="text-xl">{{ getPaymentIcon(entry.type) }}</span>
 								<div>
 									<div class="font-medium text-sm text-gray-900">{{ entry.mode_of_payment }}</div>
-									<div class="text-xs text-gray-500">{{ entry.type }}</div>
+									<div class="text-xs text-gray-500">
+										{{ entry.is_mpesa
+											? __('POS M-Pesa {0}', [entry.mpesa_transaction_id])
+											: entry.is_sms_enabler
+											? __('SMS Enabler {0}', [entry.sms_transaction_id])
+											: entry.type }}
+									</div>
 								</div>
 							</div>
 							<div class="flex items-center gap-4">
@@ -460,6 +785,7 @@
 									type="number"
 									step="5"
 									min="0"
+									:disabled="entry.is_mpesa || entry.is_sms_enabler"
 									class="w-28 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 									@input="updatePaymentEntry(index, $event.target.value)"
 								/>
@@ -641,14 +967,15 @@
 <script setup>
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { formatCurrency as formatCurrencyUtil, getCurrencySymbol } from "@/utils/currency"
+import { call } from "@/utils/apiWrapper"
 import { getPaymentIcon } from "@/utils/payment"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { Button, Dialog, Input, createResource } from "frappe-ui"
-import { computed, ref, watch } from "vue"
+import { computed, onUnmounted, ref, watch } from "vue"
 import { useToast } from "@/composables/useToast"
 
 const settingsStore = usePOSSettingsStore()
-const { showWarning } = useToast()
+const { showSuccess, showWarning, showError } = useToast()
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -689,6 +1016,10 @@ const props = defineProps({
 		type: Number,
 		default: 0,
 	},
+	requestMpesaStk: {
+		type: Function,
+		default: null,
+	},
 })
 
 const emit = defineEmits(["update:modelValue", "payment-completed", "update-additional-discount"])
@@ -706,6 +1037,35 @@ const paymentEntries = ref([])
 const customerCredit = ref([])
 const customerBalance = ref({ total_outstanding: 0, total_credit: 0, net_balance: 0 })
 const loadingCredit = ref(false)
+const mpesaAvailable = ref(false)
+const mpesaModeOfPayment = ref("")
+const checkingMpesa = ref(false)
+const showMpesaPanel = ref(false)
+const loadingMpesaPayments = ref(false)
+const mpesaPendingCount = ref(0)
+const mpesaPayments = ref([])
+const mpesaSearch = ref("")
+const selectedMpesaPayments = ref([])
+const mpesaStkPhone = ref("")
+const sendingMpesaStk = ref(false)
+const pollingMpesaStk = ref(false)
+const mpesaStkRequest = ref(null)
+const mpesaStkMatch = ref(null)
+const mpesaStkStatusMessage = ref("")
+const mpesaStkPollAttempts = ref(0)
+let mpesaSearchTimeout = null
+let mpesaStkPollTimer = null
+const smsEnablerAvailable = ref(false)
+const smsEnablerModeOfPayment = ref("")
+const checkingSmsEnabler = ref(false)
+const showSmsEnablerPanel = ref(false)
+const loadingSmsEnablerPayments = ref(false)
+const smsEnablerPendingCount = ref(0)
+const smsEnablerPayments = ref([])
+const smsEnablerSearch = ref("")
+const selectedSmsEnablerPayments = ref([])
+const smsEnablerAutoApplied = ref(false)
+let smsEnablerSearchTimeout = null
 
 // Additional discount state
 const localAdditionalDiscount = ref(0)
@@ -919,6 +1279,439 @@ async function loadPaymentMethods() {
 	}
 }
 
+async function checkMpesaAvailability() {
+	mpesaAvailable.value = false
+	mpesaModeOfPayment.value = ""
+	checkingMpesa.value = false
+
+	if (props.isOffline || (!props.company && !props.posProfile)) {
+		return
+	}
+
+	checkingMpesa.value = true
+
+	try {
+		const result = await call("pos_next.api.mpesa.check_mpesa_available", {
+			company: props.company,
+			pos_profile: props.posProfile,
+		})
+
+		mpesaAvailable.value = Boolean(result?.available)
+		mpesaModeOfPayment.value = result?.mode_of_payment || ""
+		if (mpesaAvailable.value) {
+			prefillMpesaStkPhone()
+		}
+	} catch (error) {
+		console.warn("[PaymentDialog] M-Pesa availability check failed:", error)
+		mpesaAvailable.value = false
+	} finally {
+		checkingMpesa.value = false
+	}
+}
+
+async function prefillMpesaStkPhone() {
+	if (mpesaStkPhone.value || !props.customer) {
+		return
+	}
+
+	try {
+		const result = await call("pos_next.api.mpesa.get_customer_phone", {
+			customer: props.customer?.name || props.customer,
+		})
+		if (result) {
+			mpesaStkPhone.value = result
+		}
+	} catch (error) {
+		console.warn("[PaymentDialog] Failed to load customer phone for STK:", error)
+	}
+}
+
+async function loadMpesaPayments(search = mpesaSearch.value) {
+	if (!mpesaAvailable.value || props.isOffline) {
+		return
+	}
+
+	loadingMpesaPayments.value = true
+
+	try {
+		const result = await call("pos_next.api.mpesa.get_mpesa_payments", {
+			company: props.company,
+			pos_profile: props.posProfile,
+			search,
+		})
+
+		mpesaPendingCount.value = result?.count || 0
+		mpesaPayments.value = result?.payments || []
+	} catch (error) {
+		console.error("[PaymentDialog] Failed to load M-Pesa payments:", error)
+		showError(error.message || __("Failed to load M-Pesa payments"))
+	} finally {
+		loadingMpesaPayments.value = false
+	}
+}
+
+function toggleMpesaPanel() {
+	showMpesaPanel.value = !showMpesaPanel.value
+
+	if (showMpesaPanel.value) {
+		loadMpesaPayments("")
+	}
+}
+
+function handleMpesaSearchInput() {
+	if (mpesaSearchTimeout) {
+		clearTimeout(mpesaSearchTimeout)
+	}
+
+	const search = mpesaSearch.value.trim()
+	if (search.length > 0 && search.length < 3) {
+		mpesaPayments.value = []
+		return
+	}
+
+	mpesaSearchTimeout = setTimeout(() => {
+		loadMpesaPayments(search)
+	}, 300)
+}
+
+function isMpesaSelected(paymentName) {
+	return selectedMpesaPayments.value.some((payment) => payment.name === paymentName)
+}
+
+function isMpesaAlreadyAdded(paymentName) {
+	return addedMpesaNames.value.includes(paymentName)
+}
+
+function toggleMpesaPayment(payment) {
+	if (isMpesaAlreadyAdded(payment.name)) {
+		return
+	}
+
+	if (isMpesaSelected(payment.name)) {
+		selectedMpesaPayments.value = selectedMpesaPayments.value.filter(
+			(item) => item.name !== payment.name,
+		)
+	} else {
+		selectedMpesaPayments.value.push(payment)
+	}
+}
+
+function addSelectedMpesaPayments() {
+	if (!selectedMpesaPayments.value.length) {
+		showWarning(__("Select at least one M-Pesa payment"))
+		return
+	}
+
+	if (!mpesaModeOfPayment.value) {
+		showError(__("No Phone mode of payment is configured for M-Pesa"))
+		return
+	}
+
+	for (const payment of selectedMpesaPayments.value) {
+		if (isMpesaAlreadyAdded(payment.name)) {
+			continue
+		}
+
+		const amount = Number.parseFloat(payment.transamount || 0)
+		if (!amount || amount <= 0) {
+			continue
+		}
+
+		paymentEntries.value.push({
+			mode_of_payment: mpesaModeOfPayment.value,
+			amount,
+			type: "Phone",
+			is_mpesa: true,
+			mpesa_payment_name: payment.name,
+			mpesa_transaction_id: payment.transid || payment.name,
+			reference_no: payment.transid || payment.name,
+		})
+	}
+
+	showSuccess(__("M-Pesa payment added"))
+	selectedMpesaPayments.value = []
+	showMpesaPanel.value = false
+	mpesaSearch.value = ""
+	mpesaPayments.value = []
+}
+
+function stopMpesaStkPolling() {
+	if (mpesaStkPollTimer) {
+		clearTimeout(mpesaStkPollTimer)
+		mpesaStkPollTimer = null
+	}
+	pollingMpesaStk.value = false
+}
+
+async function requestMpesaStkPayment() {
+	if (!props.requestMpesaStk) {
+		showError(__("STK request handler is not configured"))
+		return
+	}
+
+	if (!mpesaStkPhone.value.trim()) {
+		showWarning(__("Enter the customer's phone number"))
+		return
+	}
+
+	if (!mpesaStkAmount.value || mpesaStkAmount.value <= 0) {
+		showWarning(__("There is no amount to request"))
+		return
+	}
+
+	sendingMpesaStk.value = true
+	stopMpesaStkPolling()
+	mpesaStkMatch.value = null
+	mpesaStkStatusMessage.value = __("Sending payment request to the customer...")
+
+	try {
+		const result = await props.requestMpesaStk({
+			phone_number: mpesaStkPhone.value.trim(),
+			amount: mpesaStkAmount.value,
+		})
+
+		mpesaStkRequest.value = result || {}
+		mpesaStkPollAttempts.value = 0
+		showMpesaPanel.value = true
+		mpesaStkStatusMessage.value = __("Waiting for the customer's M-Pesa confirmation...")
+		showSuccess(__("STK payment request sent"))
+		await pollMpesaStkPayment()
+	} catch (error) {
+		console.error("[PaymentDialog] STK request failed:", error)
+		mpesaStkStatusMessage.value = error.message || __("Failed to send STK request")
+		showError(mpesaStkStatusMessage.value)
+	} finally {
+		sendingMpesaStk.value = false
+	}
+}
+
+async function pollMpesaStkPayment() {
+	if (!mpesaStkRequest.value?.invoice) {
+		return
+	}
+
+	pollingMpesaStk.value = true
+	mpesaStkPollAttempts.value += 1
+
+	try {
+		const result = await call("pos_next.api.mpesa.get_stk_payment_match", {
+			invoice: mpesaStkRequest.value.invoice,
+			payment_request: mpesaStkRequest.value.payment_request,
+			phone_number: mpesaStkRequest.value.phone_number || mpesaStkPhone.value,
+			amount: mpesaStkRequest.value.amount || mpesaStkAmount.value,
+			company: props.company,
+			pos_profile: props.posProfile,
+		})
+
+		if (result?.matched && result.payment) {
+			stopMpesaStkPolling()
+			mpesaStkMatch.value = result.payment
+			mpesaPayments.value = [result.payment]
+			selectedMpesaPayments.value = [result.payment]
+			mpesaPendingCount.value = Math.max(mpesaPendingCount.value, 1)
+			mpesaStkStatusMessage.value = __("Review the detected payment, then add it to this sale.")
+			showSuccess(__("M-Pesa payment received"))
+			return
+		}
+
+		if (mpesaStkPollAttempts.value >= 24) {
+			stopMpesaStkPolling()
+			mpesaStkStatusMessage.value = __("No matching payment received yet. Use Find Payments to search manually.")
+			return
+		}
+
+		mpesaStkStatusMessage.value = __("Waiting for payment confirmation... checked {0} time(s).", [mpesaStkPollAttempts.value])
+		mpesaStkPollTimer = setTimeout(pollMpesaStkPayment, 5000)
+	} catch (error) {
+		console.error("[PaymentDialog] Failed to poll STK payment:", error)
+		stopMpesaStkPolling()
+		mpesaStkStatusMessage.value = error.message || __("Could not check for the STK payment")
+		showWarning(mpesaStkStatusMessage.value)
+	}
+}
+
+function addDetectedMpesaPayment() {
+	if (!mpesaStkMatch.value) {
+		return
+	}
+
+	selectedMpesaPayments.value = [mpesaStkMatch.value]
+	addSelectedMpesaPayments()
+}
+
+async function checkSmsEnablerAvailability() {
+	smsEnablerAvailable.value = false
+	smsEnablerModeOfPayment.value = ""
+	checkingSmsEnabler.value = false
+
+	if (props.isOffline || (!props.company && !props.posProfile)) {
+		return
+	}
+
+	checkingSmsEnabler.value = true
+
+	try {
+		const result = await call("pos_next.api.smsenabler_mpesa.check_sms_enabler_available", {
+			company: props.company,
+			pos_profile: props.posProfile,
+		})
+
+		smsEnablerAvailable.value = Boolean(result?.available)
+		smsEnablerModeOfPayment.value = result?.mode_of_payment || ""
+
+		if (smsEnablerAvailable.value && (isSuggestedSmsReconciliation.value || isAutoSmsReconciliation.value)) {
+			showSmsEnablerPanel.value = true
+			await loadSmsEnablerPayments("", { suggest: true })
+		}
+	} catch (error) {
+		console.warn("[PaymentDialog] SMS Enabler availability check failed:", error)
+		smsEnablerAvailable.value = false
+	} finally {
+		checkingSmsEnabler.value = false
+	}
+}
+
+async function loadSmsEnablerPayments(search = smsEnablerSearch.value, options = {}) {
+	if (!smsEnablerAvailable.value || props.isOffline) {
+		return
+	}
+
+	loadingSmsEnablerPayments.value = true
+
+	try {
+		const result = await call("pos_next.api.smsenabler_mpesa.get_sms_payments", {
+			company: props.company,
+			pos_profile: props.posProfile,
+			search,
+			amount: options.suggest ? remainingAmount.value : 0,
+			customer: props.customer?.name || props.customer,
+		})
+
+		smsEnablerPendingCount.value = result?.count || 0
+		smsEnablerPayments.value = result?.payments || []
+
+		if (options.suggest && isAutoSmsReconciliation.value) {
+			autoApplySmsEnablerMatch()
+		}
+	} catch (error) {
+		console.error("[PaymentDialog] Failed to load SMS Enabler payments:", error)
+		showError(error.message || __("Failed to load SMS Enabler payments"))
+	} finally {
+		loadingSmsEnablerPayments.value = false
+	}
+}
+
+function toggleSmsEnablerPanel() {
+	showSmsEnablerPanel.value = !showSmsEnablerPanel.value
+
+	if (showSmsEnablerPanel.value) {
+		loadSmsEnablerPayments("", {
+			suggest: isSuggestedSmsReconciliation.value || isAutoSmsReconciliation.value,
+		})
+	}
+}
+
+function handleSmsEnablerSearchInput() {
+	if (smsEnablerSearchTimeout) {
+		clearTimeout(smsEnablerSearchTimeout)
+	}
+
+	const search = smsEnablerSearch.value.trim()
+	if (search.length > 0 && search.length < 3) {
+		smsEnablerPayments.value = []
+		return
+	}
+
+	smsEnablerSearchTimeout = setTimeout(() => {
+		loadSmsEnablerPayments(search, {
+			suggest: search.length === 0 && (isSuggestedSmsReconciliation.value || isAutoSmsReconciliation.value),
+		})
+	}, 300)
+}
+
+function isSmsEnablerSelected(paymentName) {
+	return selectedSmsEnablerPayments.value.some((payment) => payment.name === paymentName)
+}
+
+function isSmsEnablerAlreadyAdded(paymentName) {
+	return paymentEntries.value.some((entry) => entry.is_sms_enabler && entry.sms_payment_name === paymentName)
+}
+
+function toggleSmsEnablerPayment(payment) {
+	if (isSmsEnablerAlreadyAdded(payment.name)) {
+		return
+	}
+
+	if (isSmsEnablerSelected(payment.name)) {
+		selectedSmsEnablerPayments.value = selectedSmsEnablerPayments.value.filter(
+			(item) => item.name !== payment.name,
+		)
+	} else {
+		selectedSmsEnablerPayments.value.push(payment)
+	}
+}
+
+function addSelectedSmsEnablerPayments() {
+	if (!selectedSmsEnablerPayments.value.length) {
+		showWarning(__("Select at least one SMS Enabler payment"))
+		return
+	}
+
+	if (!smsEnablerModeOfPayment.value) {
+		showError(__("No Phone mode of payment is configured for SMS payments"))
+		return
+	}
+
+	for (const payment of selectedSmsEnablerPayments.value) {
+		if (isSmsEnablerAlreadyAdded(payment.name)) {
+			continue
+		}
+
+		const amount = Number.parseFloat(payment.amount || 0)
+		if (!amount || amount <= 0) {
+			continue
+		}
+
+		paymentEntries.value.push({
+			mode_of_payment: payment.mode_of_payment || smsEnablerModeOfPayment.value,
+			amount,
+			type: "Phone",
+			is_sms_enabler: true,
+			sms_payment_name: payment.name,
+			sms_transaction_id: payment.transaction_id || payment.name,
+			reference_no: payment.transaction_id || payment.name,
+		})
+	}
+
+	showSuccess(__("SMS Enabler payment added"))
+	selectedSmsEnablerPayments.value = []
+	showSmsEnablerPanel.value = false
+	smsEnablerSearch.value = ""
+	smsEnablerPayments.value = []
+}
+
+function autoApplySmsEnablerMatch() {
+	if (smsEnablerAutoApplied.value || remainingAmount.value <= 0) {
+		return
+	}
+
+	const highConfidenceMatches = smsEnablerPayments.value.filter(
+		(payment) =>
+			payment.match_level === "High" &&
+			payment.is_exact_amount &&
+			!isSmsEnablerAlreadyAdded(payment.name),
+	)
+
+	if (highConfidenceMatches.length !== 1) {
+		return
+	}
+
+	selectedSmsEnablerPayments.value = [highConfidenceMatches[0]]
+	addSelectedSmsEnablerPayments()
+	smsEnablerAutoApplied.value = true
+	showSuccess(__("SMS Enabler payment matched automatically"))
+}
+
 // Currency symbol for display
 const currencySymbol = computed(() => getCurrencySymbol(props.currency))
 
@@ -937,6 +1730,46 @@ const totalAvailableCredit = computed(() => {
 	// Use net_balance: negative means customer has credit, positive means they owe
 	// Return negative of net_balance so positive = credit available, negative = outstanding
 	return round2(-customerBalance.value.net_balance)
+})
+
+const selectedMpesaTotal = computed(() => {
+	return round2(
+		selectedMpesaPayments.value.reduce(
+			(sum, payment) => sum + (Number.parseFloat(payment.transamount) || 0),
+			0,
+		),
+	)
+})
+
+const mpesaStkAmount = computed(() => {
+	return remainingAmount.value > 0 ? remainingAmount.value : round2(props.grandTotal)
+})
+
+const selectedSmsEnablerTotal = computed(() => {
+	return round2(
+		selectedSmsEnablerPayments.value.reduce(
+			(sum, payment) => sum + (Number.parseFloat(payment.amount) || 0),
+			0,
+		),
+	)
+})
+
+const smsReconciliationMode = computed(
+	() => settingsStore.smsPaymentReconciliationMode || "Manual",
+)
+
+const isSuggestedSmsReconciliation = computed(
+	() => smsReconciliationMode.value === "Suggested",
+)
+
+const isAutoSmsReconciliation = computed(
+	() => smsReconciliationMode.value === "Auto",
+)
+
+const addedMpesaNames = computed(() => {
+	return paymentEntries.value
+		.filter((entry) => entry.is_mpesa && entry.mpesa_payment_name)
+		.map((entry) => entry.mpesa_payment_name)
 })
 
 const remainingAmount = computed(() => {
@@ -1055,6 +1888,7 @@ watch(
 watch(show, (newVal) => {
 	if (newVal) {
 		// Reset state when dialog opens
+		stopMpesaStkPolling()
 		paymentEntries.value = []
 		customAmount.value = ""
 		lastSelectedMethod.value = null
@@ -1062,6 +1896,22 @@ watch(show, (newVal) => {
 		customerBalance.value = { total_outstanding: 0, total_credit: 0, net_balance: 0 }
 		selectedSalesPersons.value = []
 		salesPersonSearch.value = ''
+		showMpesaPanel.value = false
+		mpesaSearch.value = ""
+		mpesaPayments.value = []
+		mpesaPendingCount.value = 0
+		selectedMpesaPayments.value = []
+		mpesaStkPhone.value = ""
+		mpesaStkRequest.value = null
+		mpesaStkMatch.value = null
+		mpesaStkStatusMessage.value = ""
+		mpesaStkPollAttempts.value = 0
+		showSmsEnablerPanel.value = false
+		smsEnablerSearch.value = ""
+		smsEnablerPayments.value = []
+		smsEnablerPendingCount.value = 0
+		selectedSmsEnablerPayments.value = []
+		smsEnablerAutoApplied.value = false
 
 		// Debug logging
 		console.log('[PaymentDialog] Dialog opened with props:', {
@@ -1090,6 +1940,19 @@ watch(show, (newVal) => {
 				hasCompany: !!props.company
 			})
 		}
+
+		checkMpesaAvailability()
+		checkSmsEnablerAvailability()
+	}
+})
+
+onUnmounted(() => {
+	stopMpesaStkPolling()
+	if (mpesaSearchTimeout) {
+		clearTimeout(mpesaSearchTimeout)
+	}
+	if (smsEnablerSearchTimeout) {
+		clearTimeout(smsEnablerSearchTimeout)
 	}
 })
 
@@ -1228,6 +2091,22 @@ function completePayment() {
 		paid_amount: totalPaid.value,
 		outstanding_amount: isPartial ? remainingAmount.value : 0,
 		sales_team: selectedSalesPersons.value.length > 0 ? selectedSalesPersons.value : null,
+		mpesa_payments: paymentEntries.value
+			.filter((entry) => entry.is_mpesa && entry.mpesa_payment_name)
+			.map((entry) => ({
+				name: entry.mpesa_payment_name,
+				transaction_id: entry.mpesa_transaction_id,
+				amount: entry.amount,
+				mode_of_payment: entry.mode_of_payment,
+			})),
+		sms_enabler_payments: paymentEntries.value
+			.filter((entry) => entry.is_sms_enabler && entry.sms_payment_name)
+			.map((entry) => ({
+				name: entry.sms_payment_name,
+				transaction_id: entry.sms_transaction_id,
+				amount: entry.amount,
+				mode_of_payment: entry.mode_of_payment,
+			})),
 	}
 
 	console.log('[PaymentDialog] Emitting payment-completed:', paymentData)

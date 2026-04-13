@@ -294,6 +294,7 @@
 			:customer="cartStore.customer"
 			:company="shiftStore.profileCompany"
 			:additional-discount="cartStore.additionalDiscount"
+			:request-mpesa-stk="requestMpesaStkPayment"
 			@payment-completed="handlePaymentCompleted"
 			@update-additional-discount="handleAdditionalDiscountUpdate"
 		/>
@@ -1489,9 +1490,49 @@ async function handleErrorRetry() {
 	}
 }
 
+async function requestMpesaStkPayment({ phone_number, amount }) {
+	if (offlineStore.isOffline) {
+		throw new Error(__("STK request requires an online connection"))
+	}
+
+	if (cartStore.isEmpty) {
+		throw new Error(__("Add items to cart before requesting payment"))
+	}
+
+	const customerValue = cartStore.customer?.name || cartStore.customer
+	if (!customerValue && !shiftStore.profileCustomer) {
+		throw new Error(__("Please select a customer before requesting payment"))
+	}
+
+	const draftInvoice = await cartStore.saveDraft()
+	if (!draftInvoice?.name) {
+		throw new Error(__("Could not create draft invoice for STK request"))
+	}
+
+	const result = await call("pos_next.api.mpesa.create_payment_request", {
+		invoice: draftInvoice.name,
+		customer: customerValue || shiftStore.profileCustomer,
+		phone_number,
+		amount,
+	})
+
+	return {
+		...(result || {}),
+		invoice: draftInvoice.name,
+		phone_number,
+		amount,
+	}
+}
+
 async function handlePaymentCompleted(paymentData) {
 	try {
 		const customerValue = cartStore.customer?.name || cartStore.customer
+		const mpesaPayments = Array.isArray(paymentData.mpesa_payments)
+			? paymentData.mpesa_payments
+			: []
+		const smsEnablerPayments = Array.isArray(paymentData.sms_enabler_payments)
+			? paymentData.sms_enabler_payments
+			: []
 		if (!customerValue && !shiftStore.profileCustomer) {
 			showWarning(__("Please select a customer before proceeding"))
 			uiStore.showPaymentDialog = false
@@ -1556,6 +1597,40 @@ async function handlePaymentCompleted(paymentData) {
 				const invoiceName = result.name || result.message?.name || __('Unknown')
 				const invoiceTotal = result.grand_total || result.total || 0
 				const paidAmount = paymentData.paid_amount || invoiceTotal
+
+				if (mpesaPayments.length > 0 && invoiceName !== __('Unknown')) {
+					try {
+						await call("pos_next.api.mpesa.process_sales_invoice_payments", {
+							invoice: invoiceName,
+							customer: customerValue || shiftStore.profileCustomer,
+							company: shiftStore.profileCompany,
+							mpesa_payments: mpesaPayments,
+						})
+					} catch (mpesaError) {
+						log.error("M-Pesa post-processing error:", mpesaError)
+						showWarning(
+							mpesaError.message ||
+								__("Invoice was created, but the selected M-Pesa payments could not be linked"),
+						)
+					}
+				}
+
+				if (smsEnablerPayments.length > 0 && invoiceName !== __('Unknown')) {
+					try {
+						await call("pos_next.api.smsenabler_mpesa.process_sales_invoice_payments", {
+							invoice: invoiceName,
+							customer: customerValue || shiftStore.profileCustomer,
+							company: shiftStore.profileCompany,
+							sms_payments: smsEnablerPayments,
+						})
+					} catch (smsError) {
+						log.error("SMS Enabler post-processing error:", smsError)
+						showWarning(
+							smsError.message ||
+								__("Invoice was created, but the selected SMS payments could not be linked"),
+						)
+					}
+				}
 
 				uiStore.showPaymentDialog = false
 				cartStore.clearCart()

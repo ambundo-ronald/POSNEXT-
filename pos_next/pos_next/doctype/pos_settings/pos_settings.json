@@ -17,6 +17,7 @@
   "allow_return",
   "allow_write_off_change",
   "allow_partial_payment",
+  "sms_payment_reconciliation_mode",
   "enable_sales_persons",
   "section_break_display",
   "default_card_view",
@@ -148,6 +149,14 @@
    "fieldtype": "Check",
    "label": "Allow Partial Payment",
    "description": "Enable partial payment for invoices"
+  },
+  {
+   "default": "Manual",
+   "fieldname": "sms_payment_reconciliation_mode",
+   "fieldtype": "Select",
+   "label": "SMS Payment Reconciliation",
+   "options": "Manual\nSuggested\nAuto",
+   "description": "Manual: cashier searches and selects payment. Suggested: show likely matches. Auto: apply only one high-confidence exact match."
   },
   {
    "default": "Disabled",

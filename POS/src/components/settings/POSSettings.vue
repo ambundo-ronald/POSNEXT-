@@ -353,6 +353,12 @@
 												:label="__('Allow Partial Payment')"
 												:description="__('Enable partial payment for invoices')"
 											/>
+											<SelectField
+												v-model="settings.sms_payment_reconciliation_mode"
+												:label="__('SMS Payment Reconciliation')"
+												:description="__('Manual requires cashier selection. Suggested shows likely matches. Auto applies one high-confidence exact match only.')"
+												:options="smsReconciliationModeOptions"
+											/>
 											<CheckboxField
 												v-model="settings.silent_print"
 												:label="__('Silent Print')"
@@ -431,6 +437,7 @@ const settings = ref({
 	allow_return: 0,
 	allow_write_off_change: 0,
 	allow_partial_payment: 0,
+	sms_payment_reconciliation_mode: "Manual",
 	silent_print: 0,
 	allow_negative_stock: 0,
 	tax_inclusive: 0,
@@ -467,6 +474,11 @@ const stockPolicySubsectionClasses = computed(() =>
 const stockSyncSubsectionClasses = computed(() => getSubsectionClasses("indigo"))
 const pricingSubsectionClasses = computed(() => getSubsectionClasses("emerald"))
 const operationsSubsectionClasses = computed(() => getSubsectionClasses("teal"))
+const smsReconciliationModeOptions = computed(() => [
+	{ label: __("Manual"), value: "Manual" },
+	{ label: __("Suggested"), value: "Suggested" },
+	{ label: __("Auto"), value: "Auto" },
+])
 
 // Resources
 const warehousesResource = createResource({

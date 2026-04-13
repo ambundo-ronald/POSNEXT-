@@ -13,6 +13,7 @@ export function useInvoice() {
 	const salesTeam = ref([]) // Sales team for Sales Invoice
 	const posProfile = ref(null)
 	const posOpeningShift = ref(null) // POS Opening Shift name
+	const draftInvoiceName = ref(null)
 	const additionalDiscount = ref(0)
 	const couponCode = ref(null)
 	const taxRules = ref([]) // Tax rules from POS Profile
@@ -653,6 +654,7 @@ export function useInvoice() {
 
 		const invoiceData = {
 			doctype: "Sales Invoice",
+			name: draftInvoiceName.value || undefined,
 			pos_profile: posProfile.value,
 			posa_pos_opening_shift: posOpeningShift.value,
 			customer: customer.value?.name || customer.value,
@@ -690,7 +692,11 @@ export function useInvoice() {
 		}
 
 		const result = await updateInvoiceResource.submit({ data: invoiceData })
-		return result?.data || result
+		const invoiceDoc = result?.data || result
+		if (invoiceDoc?.name) {
+			draftInvoiceName.value = invoiceDoc.name
+		}
+		return invoiceDoc
 	}
 
 	async function submitInvoice() {
@@ -708,6 +714,7 @@ export function useInvoice() {
 
 			const invoiceData = {
 				doctype: "Sales Invoice",
+				name: draftInvoiceName.value || undefined,
 				pos_profile: posProfile.value,
 				posa_pos_opening_shift: posOpeningShift.value,
 				customer: customer.value?.name || customer.value,
@@ -770,6 +777,7 @@ export function useInvoice() {
 					"Failed to create draft invoice - no invoice name returned",
 				)
 			}
+			draftInvoiceName.value = invoiceDoc.name
 
 			const submitData = {
 				change_amount:
@@ -886,6 +894,7 @@ export function useInvoice() {
 	function resetInvoice() {
 		invoiceItems.value = []
 		payments.value = []
+		draftInvoiceName.value = null
 		additionalDiscount.value = 0
 		couponCode.value = null
 
@@ -913,6 +922,7 @@ export function useInvoice() {
 
 		invoiceItems.value = []
 		payments.value = []
+		draftInvoiceName.value = null
 		additionalDiscount.value = 0
 		couponCode.value = null
 
@@ -988,6 +998,7 @@ export function useInvoice() {
 		salesTeam,
 		posProfile,
 		posOpeningShift,
+		draftInvoiceName,
 		additionalDiscount,
 		couponCode,
 		taxRules,

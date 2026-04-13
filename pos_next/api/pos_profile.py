@@ -81,6 +81,7 @@ def get_pos_settings(pos_profile):
 				"allow_return",
 				"allow_write_off_change",
 				"allow_partial_payment",
+				"sms_payment_reconciliation_mode",
 				"decimal_precision",
 				"allow_negative_stock",
 				"enable_sales_persons"
@@ -101,6 +102,7 @@ def get_pos_settings(pos_profile):
 				"allow_return": 0,
 				"allow_write_off_change": 0,
 				"allow_partial_payment": 0,
+				"sms_payment_reconciliation_mode": "Manual",
 				"decimal_precision": "2",
 				"allow_negative_stock": 0,
 				"enable_sales_persons": "Disabled"
