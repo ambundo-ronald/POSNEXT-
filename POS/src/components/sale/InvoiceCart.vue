@@ -646,6 +646,11 @@
 				</div>
 			</div>
 
+			<!-- Tax Mode Converter -->
+			<div class="mb-2">
+				<TaxModeConverter />
+			</div>
+
 			<!-- Action Buttons -->
 			<div class="flex gap-1.5">
 				<!-- Checkout Button (Primary - 50% width) -->
@@ -710,6 +715,7 @@ import { offlineWorker } from "@/utils/offline/workerClient"
 import { createResource } from "frappe-ui"
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue"
 import EditItemDialog from "./EditItemDialog.vue"
+import TaxModeConverter from "@/components/settings/TaxModeConverter.vue"
 
 /**
  * ============================================================================
