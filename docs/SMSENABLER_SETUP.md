@@ -1,0 +1,356 @@
+# SMS Enabler Setup Guide for POS Next
+
+SMS Enabler is a Kenyan payment integration that allows you to receive M-Pesa paybill payments via SMS. POS Next can automatically match incoming SMS payments to customer invoices and link them during checkout.
+
+## 📋 Prerequisites
+
+1. **SMS Enabler Account**: Sign up at [SMS Enabler](https://www.smsenabler.com/)
+2. **M-Pesa Paybill Business**: Your business registered with Safaricom M-Pesa
+3. **ERPNext Instance**: POS Next module installed
+4. **Phone Mode of Payment**: Configured in ERPNext with proper accounts
+5. **Public URL**: Your ERPNext instance must be accessible from the internet
+
+---
+
+## 🔧 Setup Steps
+
+### Step 1: Configure ERPNext Backend
+
+#### 1.1 Create "Phone" Mode of Payment
+
+1. Go to **ERPNext** → **Accounting** → **Mode of Payment**
+2. Create a new Mode of Payment:
+   - **Name**: `Phone` (or similar identifier)
+   - **Type**: `Phone`
+   - **Enabled**: ✅ Check
+
+3. Add Mode of Payment Accounts for your company:
+   - Click **Add** in the "Accounts" table
+   - **Company**: Your operating company
+   - **Default Account**: Select your cash/receivables account (e.g., `Cash - KES` or `Undeposited Funds`)
+   - **Save**
+
+#### 1.2 Configure SMS Enabler Token (site_config.json)
+
+Add your SMS Enabler security token to your Frappe configuration:
+
+**File**: `frappe-bench/sites/your-site/site_config.json`
+
+```json
+{
+  "app_name": "Frappe",
+  "db_name": "your_database",
+  "db_password": "your_password",
+  "sms_enabler_token": "your_sms_enabler_webhook_token_here"
+}
+```
+
+> **Security Note**: Protect this token! It's used to authenticate incoming SMS webhooks. Change it if compromised.
+
+**Alternative**: If you can't edit site_config.json, you can skip the token (not recommended for production):
+- The token check will be bypassed if not configured
+- All SMS endpoints will be exposed without authentication
+
+#### 1.3 Restart Frappe Worker
+
+```bash
+cd frappe-bench
+bench restart
+```
+
+---
+
+### Step 2: Configure SMS Enabler Service
+
+#### 2.1 Register Your Webhook URL
+
+1. Log in to **SMS Enabler Console**: https://console.smsenabler.com/
+2. Go to **Settings** → **API Webhooks** or **SMS Forwarding**
+3. Add a new webhook with:
+   - **URL**: `https://your-erpnext-domain.com/api/method/pos_next.api.smsenabler_mpesa.receive_sms`
+   - **Method**: POST
+   - **Authentication**: Include your token in URL parameter or header:
+     - Option A (Query Parameter): `https://your-erpnext-domain.com/api/method/pos_next.api.smsenabler_mpesa.receive_sms?token=your_sms_enabler_token`
+     - Option B (Header): Add header `X-SMS-Enabler-Token: your_sms_enabler_token`
+
+4. **Test the webhook** (SMS Enabler will send a test request)
+5. Save configuration
+
+#### 2.2 Configure SMS Parsing
+
+SMS Enabler should forward SMS messages with the following information:
+- **Payer Name**: Who sent the money
+- **Payer Phone**: Phone number of sender
+- **Amount**: Payment amount (KES/KSH)
+- **Transaction ID**: M-Pesa confirmation code
+- **Account Reference**: Optional paybill account reference
+
+**Example SMS format** (what your customers receive):
+```
+TransactionID: ABC123D4E5
+Amount: KES 5000
+From: JOHN DOE
+For: Account/Invoice
+```
+
+---
+
+### Step 3: Configure POS Profile
+
+#### 3.1 Set Default Phone Mode of Payment
+
+1. Go to **POS Profile** in ERPNext
+2. Open your active POS Profile
+3. In the **Payments** section, add `Phone` as a payment mode:
+   - Click **Add** row
+   - **Mode of Payment**: `Phone`
+   - **Enabled**: ✅ Check
+4. **Save** the POS Profile
+
+#### 3.2 Configure SMS Reconciliation Mode
+
+1. Still in **POS Profile**, look for **SMS Enabler Settings** section (or create custom fields):
+   - **SMS Reconciliation Mode**: Select one:
+     - `Manual`: Manual payment selection during checkout
+     - `Suggested`: Auto-suggest matching payments (default)
+     - `Auto`: Automatically add exact amount matches
+
+2. **Save** the profile
+
+#### 3.3 Optional: Custom Fields
+
+If fields don't exist, add them:
+
+**Field 1**: SMS Reconciliation Mode
+- **DocType**: POS Profile
+- **Fieldname**: `sms_reconciliation_mode`
+- **Fieldtype**: Select
+- **Options**: `Manual\nSuggested\nAuto`
+- **Default**: `Suggested`
+- **Insert After**: Payments section
+
+---
+
+### Step 4: Test the Integration
+
+#### 4.1 Verify SMS Reception
+
+1. Send a test SMS to your SMS Enabler paybill number:
+   ```
+   Send to Paybill
+   [Account number: your-account]
+   Amount: 100 KES
+   ```
+
+2. Check **SMS Enabler Payment Register** in POS Next:
+   - Go to **Desk** → Search **SMS Enabler Payment Register**
+   - You should see the received SMS with:
+     - ✅ Status: `Pending` or `Parsed`
+     - Amount: `100.00` KES
+     - Payer details extracted
+
+3. If status shows `Failed Parse`, the SMS format isn't recognized. Verify:
+   - Amount in SMS (look for KES/KSH)
+   - Transaction ID format (should be 6+ alphanumeric chars)
+
+#### 4.2 Test POS Payment Selection
+
+1. Open **POS Sale**
+2. Add items to cart and proceed to **Payment**
+3. You should see:
+   - "Quick Pay - SMS Enabler" section if SMS settings are configured
+   - Or "Checking SMS Enabler setup..." while loading
+4. Click **"Find SMS Payments"** button
+5. Enter 3+ characters to search (searches by name, phone, transaction ID, account)
+6. Select matching payments
+7. Click **"Add Selected"** to link payments
+
+---
+
+### Step 5: Configure Payment Matching Rules
+
+#### 5.1 Automatic Matching Criteria
+
+SMS Enabler automatically scores payments based on:
+
+| Criteria | Points | Example |
+|----------|--------|---------|
+| **Exact Amount** | 70 | Invoice 5000, Payment 5000 |
+| **Close Amount** | 35 | Invoice 5000, Payment 5020 (±2%) |
+| **Same Phone** | 25 | Customer & Payer phone match |
+| **Name Match** | 10 | Names share 3+ letter words |
+| **Today** | 10 | Payment received today |
+| **Has Reference** | 5 | Account reference included |
+
+**Match Levels**:
+- 🟢 **High** (90+): Auto-suggest in "Suggested" mode
+- 🟡 **Suggested** (60-89): Show in search results
+- 🔴 **Low** (<60): Show but requires manual verification
+
+#### 5.2 Improve Matching
+
+To improve matching accuracy:
+
+1. **Ensure customer has phone number**:
+   - Go to **Customer** form
+   - Add **Mobile No** or linked **Contact** with phone
+
+2. **Use consistent account references**:
+   - Train staff to include invoice/account number in SMS
+
+3. **Keep Mode of Payment account updated**:
+   - Ensure account exists and is active in your company
+
+---
+
+## 🔍 Troubleshooting
+
+### Issue: "SMS Enabler setup is not available"
+
+**Cause**: Mode of Payment not configured
+- **Fix**: Create `Phone` mode of payment with account setup (see Step 1.1)
+
+### Issue: SMS payments not showing in POS
+
+**Cause**: Webhooks not receiving SMS
+- **Check**:
+  1. Is your ERPNext publicly accessible? (`https://your-domain/`)
+  2. Is webhook URL correct in SMS Enabler console?
+  3. Is `site_config.json` token correct?
+  4. Check Frappe error logs: **Desk** → **Error Log**
+
+```bash
+# Check webhook logs
+cd frappe-bench
+bench doctor
+bench logs -f
+```
+
+### Issue: SMS marked as "Failed Parse"
+
+**Cause**: Amount or Transaction ID not extracted
+- **Solution**:
+  1. Go to SMS record in **SMS Enabler Payment Register**
+  2. Check **Raw Message** field
+  3. Ensure message contains:
+     - Amount with KES/KSH currency indicator
+     - Transaction ID (6+ alphanumeric characters)
+  4. Verify format matches examples expected by SMS Enabler
+
+### Issue: Payment matched to wrong invoice
+
+**Cause**: Multiple invoices with same amount
+- **Fix**:
+  1. Use account reference in SMS (customer account/invoice number)
+  2. Manually verify before confirming payment
+  3. Check customer phone number accuracy
+
+---
+
+## 🚀 Advanced Configuration
+
+### Custom SMS Parser (Advanced)
+
+If your SMS format is non-standard, modify the parser in:
+
+**File**: `pos_next/api/smsenabler_mpesa.py`
+
+Functions to customize:
+- `_parse_amount()` - Extract currency amount
+- `_parse_transaction_id()` - Extract transaction code
+- `_parse_payer_phone()` - Extract sender phone
+- `_parse_account_reference()` - Extract customer account
+
+### Webhook Signature Verification
+
+For enhanced security, SMS Enabler can sign webhooks. Add to your configuration:
+
+**File**: `site_config.json`
+```json
+{
+  "sms_enabler_token": "your_token",
+  "sms_enabler_webhook_secret": "your_signing_secret"
+}
+```
+
+Then verify signature in API before processing.
+
+### Reconciliation Automation
+
+For `Auto` mode reconciliation, adjust scoring thresholds in:
+- `_score_payment_match()` function in `smsenabler_mpesa.py`
+- Default threshold: 90+ points for auto-add
+
+---
+
+## 📊 Monitoring
+
+### View SMS Payment History
+
+1. Go to **SMS Enabler Payment Register** list
+2. Filter by:
+   - **Status**: Pending, Matched, Consumed, Duplicate
+   - **Received At**: Date range
+   - **Company**: Your operating company
+
+3. Analyze metrics:
+   - Total pending payments
+   - Parse success rate
+   - Match accuracy
+
+### Linked Invoices
+
+When a payment is used:
+- **Status**: Changed to `Consumed`
+- **Sales Invoice**: Linked to created invoice
+- **Payment Entry**: Linked to accounting entry
+
+---
+
+## ✅ Integration Checklist
+
+- [ ] SMS Enabler account created and verified
+- [ ] `Phone` Mode of Payment created
+- [ ] Mode of Payment account linked to company
+- [ ] `sms_enabler_token` added to `site_config.json`
+- [ ] Frappe restarted after config change
+- [ ] Webhook URL registered in SMS Enabler console
+- [ ] Webhook tested successfully
+- [ ] POS Profile updated with Phone payment mode
+- [ ] SMS Reconciliation Mode configured in POS Profile
+- [ ] Test SMS sent and received
+- [ ] SMS parsed correctly in Payment Register
+- [ ] POS payment dialog shows SMS section
+- [ ] First payment linked and invoice created
+- [ ] Invoice marked Consumed after linking
+- [ ] Accounting entries created correctly
+
+---
+
+## 📞 Support
+
+- **SMS Enabler Docs**: https://www.smsenabler.com/docs
+- **ERPNext Docs**: https://docs.erpnext.com
+- **POS Next Issues**: https://github.com/ambundo-ronald/POSNEXT-/issues
+- **Community Chat**: Telegram - POS Next Community
+
+---
+
+## 🔐 Security Best Practices
+
+1. **Protect your token**:
+   - Never commit `site_config.json` to version control
+   - Use environment variables in production
+   - Rotate token regularly
+
+2. **Use HTTPS only**:
+   - Webhook URL must be HTTPS
+   - Validate SSL certificates
+
+3. **Validate source**:
+   - Verify webhook comes from SMS Enabler IP
+   - Add IP whitelisting if available
+
+4. **Monitor failed attempts**:
+   - Check Error Log regularly
+   - Alert on authentication failures

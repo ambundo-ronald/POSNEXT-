@@ -403,7 +403,6 @@
 									<PriceListMapping :pos-profile="props.posProfile" />
 								</div>
 							</div>
-
 						</div>
 
 						<!-- Empty State -->
