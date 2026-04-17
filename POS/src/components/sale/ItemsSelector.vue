@@ -723,6 +723,10 @@ import {
 
 const props = defineProps({
 	posProfile: String,
+	customer: {
+		type: [Object, String],
+		default: null,
+	},
 	cartItems: {
 		type: Array,
 		default: () => [],
@@ -872,6 +876,14 @@ watch(
 		if (newProfile) {
 			itemStore.setPosProfile(newProfile)
 		}
+	},
+	{ immediate: true },
+)
+
+watch(
+	() => props.customer,
+	(newCustomer) => {
+		itemStore.setCustomer(newCustomer)
 	},
 	{ immediate: true },
 )

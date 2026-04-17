@@ -90,6 +90,12 @@
 								>
 									{{ __('Sales Management') }}
 								</button>
+								<button
+									@click="activeTab = 'pricing'"
+									:class="['px-4 py-2 text-sm font-medium rounded-md transition-all duration-200', activeTab === 'pricing' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50']"
+								>
+									{{ __('Pricing Strategy') }}
+								</button>
 							</div>
 
 							<!-- Stock Settings Section - Prominent -->
@@ -369,6 +375,35 @@
 								</div>
 							</div>
 
+							<!-- Price List Mapping Section -->
+							<div v-if="activeTab === 'pricing'" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+								<div :class="pricingStrategyClasses.header">
+									<div class="flex items-center justify-between">
+										<div class="flex items-center gap-3">
+											<div :class="pricingStrategyClasses.iconContainer">
+												<svg :class="pricingStrategyClasses.icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+												</svg>
+											</div>
+											<div>
+												<h3 class="text-lg font-bold text-gray-900">{{ __('Conditional Pricing') }}</h3>
+												<p class="text-xs text-gray-600 mt-0.5">{{ __('Apply different price lists based on warehouse and customer group') }}</p>
+											</div>
+										</div>
+										<div :class="pricingStrategyClasses.badge">
+											<svg :class="pricingStrategyClasses.badgeIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+												</svg>
+											</div>
+											<span :class="pricingStrategyClasses.badgeText">{{ __('Pricing Rules') }}</span>
+										</div>
+									</div>
+								</div>
+								<div class="p-6">
+									<PriceListMapping :pos-profile="props.posProfile" />
+								</div>
+							</div>
+
 						</div>
 
 						<!-- Empty State -->
@@ -391,6 +426,7 @@
 import CheckboxField from "@/components/settings/CheckboxField.vue"
 import NumberField from "@/components/settings/NumberField.vue"
 import SelectField from "@/components/settings/SelectField.vue"
+import PriceListMapping from "@/components/settings/PriceListMapping.vue"
 import { useToast } from "@/composables/useToast"
 import { Button, call, createResource } from "frappe-ui"
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
@@ -467,6 +503,7 @@ const warehouseOptions = computed(() => {
 // Dynamic classes using configuration helpers (DRY principle)
 const stockSectionClasses = computed(() => getSectionHeaderClasses("purple"))
 const salesSectionClasses = computed(() => getSectionHeaderClasses("green"))
+const pricingStrategyClasses = computed(() => getSectionHeaderClasses("amber"))
 const warehouseSubsectionClasses = computed(() => getSubsectionClasses("gray"))
 const stockPolicySubsectionClasses = computed(() =>
 	getSubsectionClasses("blue"),

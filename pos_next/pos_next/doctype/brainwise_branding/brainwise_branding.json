@@ -74,7 +74,7 @@
    "read_only": 1
   },
   {
-   "default": "BrainWise",
+   "default": "Jorovin Ltd",
    "fieldname": "brand_name",
    "fieldtype": "Data",
    "in_list_view": 1,

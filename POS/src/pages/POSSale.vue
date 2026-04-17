@@ -703,6 +703,7 @@ import InvoiceDetailDialog from "@/components/invoices/InvoiceDetailDialog.vue"
 import { useRealtimeStock } from "@/composables/useRealtimeStock"
 import { usePOSEvents } from "@/composables/usePOSEvents"
 import { useLocale } from "@/composables/useLocale"
+import { usePriceListResolver } from "@/composables/usePriceListResolver"
 import { session } from "@/data/session"
 import { useUserData } from "@/data/user"
 import { parseError } from "@/utils/errorHandler"
@@ -741,6 +742,13 @@ const { onStockUpdate } = useRealtimeStock()
 
 // POS Events system
 const { onWarehouseChanged, onPricingChanged, onStockPolicyChanged, onSettingsChanged, onSalesOperationsChanged } = usePOSEvents()
+
+// Price List Resolver for conditional pricing
+const { 
+	loadMappings: loadPriceListMappings, 
+	resolvePriceList, 
+	hasMappings: hasPriceListMappings 
+} = usePriceListResolver()
 
 // Initialize toast
 const { showSuccess, showError, showWarning } = useToast()
@@ -829,6 +837,8 @@ watch(
 	(newProfile) => {
 		if (newProfile) {
 			warehousesResource.reload()
+			// Load conditional price list mappings for this profile
+			loadPriceListMappings(newProfile)
 		}
 	},
 	{ immediate: true },
@@ -1426,11 +1436,71 @@ function handleAdditionalDiscountUpdate(discountAmount) {
 	cartStore.rebuildIncrementalCache()
 }
 
-function handleCustomerSelected(selectedCustomer) {
+/**
+ * Apply conditional price list based on warehouse and customer group mapping
+ * 
+ * When a customer with a specific group is selected and we're in a mapped warehouse,
+ * automatically apply the mapped price list to the cart by re-pricing items.
+ */
+async function applyConditionalPriceList() {
+	try {
+		// Need both warehouse and customer group
+		const currentWarehouse = shiftStore.currentProfile?.warehouse
+		const customerGroup = cartStore.customer?.customer_group
+
+		if (!currentWarehouse || !customerGroup || !shiftStore.currentProfile?.name) {
+			log.debug('Cannot apply conditional price list - missing warehouse or customer group')
+			return
+		}
+
+		// Resolve the mapped price list
+		const mappedPriceList = await resolvePriceList(
+			shiftStore.currentProfile.name,
+			currentWarehouse,
+			customerGroup
+		)
+
+		if (mappedPriceList) {
+			log.info('Applying conditional price list', {
+				warehouse: currentWarehouse,
+				customerGroup: customerGroup,
+				priceList: mappedPriceList
+			})
+
+			// Update customer object with the mapped price list
+			if (cartStore.customer) {
+				cartStore.customer.customer_price_list = mappedPriceList
+			}
+
+			// Reprice all items with the new price list
+			await cartStore.repriceCartItems(shiftStore.currentProfile)
+
+			showSuccess(
+				__('Price list updated to {0} based on {1} warehouse and {2} customer group',
+					[mappedPriceList, currentWarehouse, customerGroup]
+				)
+			)
+		} else {
+			log.debug('No conditional price list mapping found')
+		}
+	} catch (error) {
+		log.error('Error applying conditional price list:', error)
+		// Don't show error - this is optional functionality
+	}
+}
+
+async function handleCustomerSelected(selectedCustomer) {
 	if (selectedCustomer) {
 		cartStore.setCustomer(selectedCustomer)
+		await cartStore.repriceCartItems(shiftStore.currentProfile)
+		await cartStore.reapplyOffer(shiftStore.currentProfile)
 		uiStore.showCustomerDialog = false
 		showSuccess(__('{0} selected', [selectedCustomer.customer_name]))
+
+		// Apply conditional price list if mappings exist
+		if (hasPriceListMappings.value) {
+			await applyConditionalPriceList()
+		}
 
 		if (pendingPaymentAfterCustomer.value) {
 			pendingPaymentAfterCustomer.value = false
@@ -1438,6 +1508,8 @@ function handleCustomerSelected(selectedCustomer) {
 		}
 	} else {
 		cartStore.setCustomer(null)
+		await cartStore.repriceCartItems(shiftStore.currentProfile)
+		await cartStore.reapplyOffer(shiftStore.currentProfile)
 	}
 }
 
@@ -2273,6 +2345,11 @@ async function handleWarehouseChanged(newWarehouse) {
 		}
 
 		showSuccess(__('Switched to {0}. Stock quantities refreshed.', [newWarehouse]))
+
+		// Apply conditional price list if customer is selected and mappings exist
+		if (cartStore.customer && hasPriceListMappings.value) {
+			await applyConditionalPriceList()
+		}
 	} catch (error) {
 		log.error("Error handling warehouse change:", error)
 		showWarning(__('Warehouse updated but failed to reload stock. Please refresh manually.'))

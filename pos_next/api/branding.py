@@ -61,7 +61,7 @@ def get_default_config():
 	"""Return default branding configuration"""
 	return {
 		"_t": base64.b64encode("Powered by".encode()).decode(),
-		"_l": base64.b64encode("BrainWise".encode()).decode(),
+		"_l": base64.b64encode("Jorovin Ltd".encode()).decode(),
 		"_u": base64.b64encode("https://nexus.brainwise.me".encode()).decode(),
 		"_i": 10000,
 		"_v": True,

@@ -9,6 +9,7 @@ from frappe import _
 from frappe.utils import flt, cint, nowdate, nowtime, get_datetime, cstr
 from erpnext.stock.doctype.batch.batch import get_batch_qty, get_batch_no
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
+from pos_next.pricing import resolve_profile_selling_price_list
 
 try:
     from erpnext.accounts.doctype.pricing_rule.pricing_rule import (
@@ -335,6 +336,14 @@ def update_invoice(data):
                 invoice_doc.company = pos_profile_doc.company
             if pos_profile_doc.currency and not invoice_doc.get("currency"):
                 invoice_doc.currency = pos_profile_doc.currency
+
+            effective_price_list = resolve_profile_selling_price_list(
+                pos_profile_doc,
+                customer=invoice_doc.get("customer"),
+                customer_group=invoice_doc.get("customer_group"),
+            )
+            if effective_price_list:
+                invoice_doc.selling_price_list = effective_price_list
 
             # Copy accounting dimensions from POS Profile
             if hasattr(pos_profile_doc, "branch") and pos_profile_doc.branch:
@@ -1336,7 +1345,11 @@ def apply_offers(invoice_data, selected_offers=None):
                 "plc_conversion_rate": flt(invoice.get("plc_conversion_rate") or 1)
                 or 1,
                 "price_list": invoice.get("price_list")
-                or profile.get("selling_price_list"),
+                or resolve_profile_selling_price_list(
+                    profile,
+                    customer=customer,
+                    customer_group=customer_group,
+                ),
                 "customer": customer,
                 "customer_group": customer_group,
                 "territory": territory,

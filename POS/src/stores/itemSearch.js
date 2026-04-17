@@ -25,6 +25,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	const selectedItemGroup = ref(null)
 	const itemGroups = ref([])
 	const profileItemGroups = ref([]) // Item groups from POS Profile filter
+	const selectedCustomer = ref(null)
 	const loading = ref(false)
 	const loadingMore = ref(false)
 	const searching = ref(false) // Separate loading state for search
@@ -62,6 +63,14 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 	// Real-time POS Profile update handler
 	let posProfileUpdateCleanup = null
+
+	function getCustomerPricingParams() {
+		const rawCustomer = selectedCustomer.value
+		return {
+			customer: rawCustomer?.name || rawCustomer || null,
+			customer_group: rawCustomer?.customer_group || null,
+		}
+	}
 
 	// ========================================================================
 	// SMART CACHE UPDATE HELPERS
@@ -769,6 +778,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					item_group: null, // No filter - get items from all groups
 					start: 0,
 					limit: itemsPerPage.value,
+					...getCustomerPricingParams(),
 				})
 				const list = response?.message || response || []
 
@@ -833,6 +843,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					item_group: itemGroup,
 					start: 0,
 					limit: 1000, // Get all items from this group
+					...getCustomerPricingParams(),
 				})
 				const items = response?.message || response || []
 				log.debug(`Fetched ${items.length} items from group: ${itemGroup}`)
@@ -962,6 +973,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				item_group: null, // No filter - get items from all groups
 				start: currentOffset.value,
 				limit: itemsPerPage.value,
+				...getCustomerPricingParams(),
 			})
 			const list = response?.message || response || []
 
@@ -1043,6 +1055,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					item_group: null, // No filters for background sync
 					start: offset,
 					limit: batchSize,
+					...getCustomerPricingParams(),
 				})
 				const list = response?.message || response || []
 
@@ -1161,6 +1174,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 						item_group: selectedItemGroup.value,
 						start: 0,
 						limit: searchLimit, // Dynamically adjusted based on device performance
+						...getCustomerPricingParams(),
 					})
 					const serverResults = response?.message || response || []
 
@@ -1222,6 +1236,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			const result = await searchByBarcodeResource.submit({
 				barcode: barcode,
 				pos_profile: posProfile.value,
+				...getCustomerPricingParams(),
 			})
 
 			const item = result?.message || result
@@ -1399,6 +1414,27 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		}
 	}
 
+	async function setCustomer(customer) {
+		const nextName = customer?.name || customer || null
+		const nextGroup = customer?.customer_group || null
+		const currentName = selectedCustomer.value?.name || selectedCustomer.value || null
+		const currentGroup = selectedCustomer.value?.customer_group || null
+
+		if (nextName === currentName && nextGroup === currentGroup) {
+			return
+		}
+
+		selectedCustomer.value = customer || null
+		serverDataFresh.value = false
+		stopBackgroundCacheSync()
+		clearBaseCache()
+		setSearchResults([])
+
+		if (posProfile.value) {
+			await loadAllItems(posProfile.value, true)
+		}
+	}
+
 	function invalidateCache() {
 		// Clear caches to force UI refresh with updated stock
 		clearBaseCache()
@@ -1431,6 +1467,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		cacheStats,
 		sortBy,
 		sortOrder,
+		selectedCustomer,
 
 		// ========================================================================
 		// COMPUTED PROPERTIES
@@ -1451,6 +1488,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		setSelectedItemGroup,
 		setCartItems, // Delegates to stock store for reservations
 		setPosProfile,
+		setCustomer,
 		startBackgroundCacheSync,
 		stopBackgroundCacheSync,
 		cleanup,

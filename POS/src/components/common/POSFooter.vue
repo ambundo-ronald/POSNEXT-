@@ -3,10 +3,7 @@
 		@contextmenu.prevent @selectstart.prevent>
 		<div class="footer-content" dir="ltr">
 			<span class="footer-text">{{ footerText }}</span>
-			<a :href="footerLink" target="_blank" rel="noopener noreferrer" class="footer-link"
-				@click="handleLinkClick">
-				{{ linkText }}
-			</a>
+			<span class="footer-link">{{ linkText }}</span>
 		</div>
 	</div>
 </template>
@@ -17,7 +14,7 @@ import { call } from '@/utils/apiWrapper'
 
 // Component state
 const footerText = ref('Powered by')
-const linkText = ref('BrainWise')
+const linkText = ref('Jorovin Ltd')
 const footerLink = ref('https://nexus.brainwise.me')
 const footerRoot = ref(null)
 const config = ref({})
@@ -84,7 +81,7 @@ const loadBrandingConfig = async () => {
 		console.error('[BrainWise] Failed to load branding config:', error)
 		// Use fallback values
 		footerText.value = 'Powered by'
-		linkText.value = 'BrainWise'
+		linkText.value = 'Jorovin Ltd'
 		footerLink.value = 'https://nexus.brainwise.me'
 	}
 }
@@ -130,7 +127,7 @@ const logClientEvent = async (eventType, details = {}) => {
 const ensureBranding = () => {
 	if (!footerRoot.value) return
 
-	const expectedBrand = atob(config.value._l || btoa('BrainWise'))
+	const expectedBrand = atob(config.value._l || btoa('Jorovin Ltd'))
 	const expectedUrl = atob(config.value._u || btoa('https://nexus.brainwise.me'))
 	const expectedText = atob(config.value._t || btoa('Powered by'))
 
@@ -153,11 +150,6 @@ const ensureBranding = () => {
 		if (linkEl.textContent.trim() !== expectedBrand) {
 			linkEl.textContent = expectedBrand
 		}
-		if (linkEl.getAttribute('href') !== expectedUrl) {
-			linkEl.setAttribute('href', expectedUrl)
-		}
-		linkEl.setAttribute('rel', 'noopener noreferrer')
-		linkEl.setAttribute('target', '_blank')
 	}
 
 	const textEl = footerRoot.value.querySelector('.footer-text')
@@ -221,13 +213,6 @@ const restoreFooter = () => {
 	}
 
 	ensureBranding()
-}
-
-// Track link clicks
-const handleLinkClick = () => {
-	const timestamp = Date.now()
-	sessionStorage.setItem('_bw_lc', timestamp.toString())
-	logClientEvent('link_click', { url: footerLink.value })
 }
 
 // Integrity check function

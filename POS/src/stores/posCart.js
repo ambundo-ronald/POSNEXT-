@@ -120,6 +120,38 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		customer.value = selectedCustomer
 	}
 
+	async function repriceCartItems(currentProfile = null) {
+		if (!currentProfile || invoiceItems.value.length === 0) {
+			return true
+		}
+
+		const repricedItems = await Promise.allSettled(
+			invoiceItems.value.map(async (item) => {
+				const itemDetails = await getItemDetailsResource.submit({
+					item_code: item.item_code,
+					pos_profile: posProfile.value,
+					customer: customer.value?.name || customer.value,
+					customer_group: customer.value?.customer_group,
+					qty: item.quantity,
+					uom: item.uom,
+				})
+
+				item.price_list_rate =
+					itemDetails.price_list_rate || itemDetails.rate || item.price_list_rate || item.rate
+				item.rate = item.price_list_rate
+				item.conversion_factor = itemDetails.conversion_factor || item.conversion_factor || 1
+				item.item_uoms = itemDetails.item_uoms || item.item_uoms || []
+				item.uom_prices = itemDetails.uom_prices || item.uom_prices || {}
+				item.warehouse = itemDetails.warehouse || item.warehouse
+
+				recalculateItem(item)
+			}),
+		)
+
+		rebuildIncrementalCache()
+		return repricedItems.every((result) => result.status === "fulfilled")
+	}
+
 	function setPendingItem(item, qty = 1, mode = "uom") {
 		pendingItem.value = item
 		pendingItemQty.value = qty
@@ -809,6 +841,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		applyOffer,
 		removeOffer,
 		reapplyOffer,
+		repriceCartItems,
 		changeItemUOM,
 		updateItemDetails,
 		getItemDetailsResource,
