@@ -59,6 +59,7 @@ dev-dist/
 
 # Vite
 .vite/
+POS/vite.config.js.timestamp-*.mjs
 *.png
 !docs/screenshots/*.png
 !docs/screenshots/*.gif
