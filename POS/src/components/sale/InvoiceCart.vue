@@ -581,14 +581,14 @@
 
 									<!-- Price -->
 									<span class="text-[10px] sm:text-xs font-bold text-gray-700">
-										{{ formatCurrency(item.rate) }}
+										{{ formatCurrency(getDisplayRate(item)) }}
 									</span>
 								</div>
 
 								<!-- Item Total -->
 								<div class="text-end flex-shrink-0">
 									<div class="text-xs sm:text-sm font-bold text-blue-600 leading-none">
-										{{ formatCurrency(item.amount || item.rate * item.quantity) }}
+										{{ formatCurrency(getDisplayAmount(item)) }}
 									</div>
 								</div>
 							</div>
@@ -608,7 +608,7 @@
 				</div>
 				<div class="flex items-center justify-between text-xs text-gray-600">
 					<span class="font-medium">{{ __('Subtotal') }}</span>
-					<span class="font-bold text-gray-900 text-center min-w-[60px]">{{ formatCurrency(subtotal) }}</span>
+					<span class="font-bold text-gray-900 text-center min-w-[60px]">{{ formatCurrency(displaySubtotal) }}</span>
 				</div>
 			</div>
 
@@ -644,11 +644,6 @@
 						{{ formatCurrency(grandTotal) }}
 					</span>
 				</div>
-			</div>
-
-			<!-- Tax Mode Converter -->
-			<div class="mb-2">
-				<TaxModeConverter />
 			</div>
 
 			<!-- Action Buttons -->
@@ -715,7 +710,6 @@ import { offlineWorker } from "@/utils/offline/workerClient"
 import { createResource } from "frappe-ui"
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue"
 import EditItemDialog from "./EditItemDialog.vue"
-import TaxModeConverter from "@/components/settings/TaxModeConverter.vue"
 
 /**
  * ============================================================================
@@ -1027,6 +1021,30 @@ const totalQuantity = computed(() => {
 	}, 0)
 })
 
+const isTaxInclusive = computed(() => Boolean(cartStore.taxInclusive))
+
+const inclusiveTaxMultiplier = computed(() => {
+	if (!isTaxInclusive.value) {
+		return 1
+	}
+
+	const grossSubtotal = Number.parseFloat(props.subtotal || 0)
+	const taxAmount = Number.parseFloat(props.taxAmount || 0)
+	const netSubtotal = grossSubtotal - taxAmount
+
+	return netSubtotal > 0 ? grossSubtotal / netSubtotal : 1
+})
+
+const displaySubtotal = computed(() => {
+	if (!isTaxInclusive.value) {
+		return props.subtotal
+	}
+
+	return props.items.reduce((sum, item) => {
+		return sum + getDisplayAmount(item)
+	}, 0)
+})
+
 /**
  * ============================================================================
  * FUNCTIONS
@@ -1165,6 +1183,21 @@ function getInitials(name) {
  */
 function formatCurrency(amount) {
 	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency)
+}
+
+function getDisplayRate(item) {
+	const priceListRate = Number.parseFloat(item.price_list_rate || item.rate || 0)
+
+	if (!isTaxInclusive.value) {
+		return Number.parseFloat(item.rate || priceListRate || 0)
+	}
+
+	return priceListRate / inclusiveTaxMultiplier.value
+}
+
+function getDisplayAmount(item) {
+	const quantity = Number.parseFloat(item.quantity || 0)
+	return getDisplayRate(item) * quantity
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
