@@ -19,6 +19,8 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allow_write_off_change: 0,
 		allow_partial_payment: 0,
 		sms_payment_reconciliation_mode: "Manual",
+		sms_enabler_enabled: 0,
+		sms_enabler_source: "SMS Enabler",
 		// Display Settings
 		default_card_view: 0,
 		display_item_code: 0,
@@ -90,6 +92,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	)
 	const smsPaymentReconciliationMode = computed(
 		() => settings.value.sms_payment_reconciliation_mode || "Manual",
+	)
+	const smsEnablerEnabled = computed(() =>
+		Boolean(settings.value.sms_enabler_enabled),
 	)
 
 	// Computed - Display Settings
@@ -266,6 +271,8 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			allow_write_off_change: 0,
 			allow_partial_payment: 0,
 			sms_payment_reconciliation_mode: "Manual",
+			sms_enabler_enabled: 0,
+			sms_enabler_source: "SMS Enabler",
 			default_card_view: 0,
 			display_item_code: 0,
 			show_customer_balance: 0,
@@ -367,6 +374,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allowWriteOffChange,
 		allowPartialPayment,
 		smsPaymentReconciliationMode,
+		smsEnablerEnabled,
 
 		// Computed - Display Settings
 		defaultCardView,

@@ -18,6 +18,11 @@
   "allow_write_off_change",
   "allow_partial_payment",
   "sms_payment_reconciliation_mode",
+  "section_break_sms_enabler",
+  "sms_enabler_enabled",
+  "sms_enabler_source",
+  "column_break_sms_enabler",
+  "sms_enabler_token",
   "enable_sales_persons",
   "section_break_display",
   "default_card_view",
@@ -157,6 +162,37 @@
    "label": "SMS Payment Reconciliation",
    "options": "Manual\nSuggested\nAuto",
    "description": "Manual: cashier searches and selects payment. Suggested: show likely matches. Auto: apply only one high-confidence exact match."
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_sms_enabler",
+   "fieldtype": "Section Break",
+   "label": "SMS Enabler"
+  },
+  {
+   "default": "0",
+   "fieldname": "sms_enabler_enabled",
+   "fieldtype": "Check",
+   "label": "Enable SMS Enabler",
+   "description": "Receive payment SMS messages through the POS Next webhook."
+  },
+  {
+   "default": "SMS Enabler",
+   "fieldname": "sms_enabler_source",
+   "fieldtype": "Data",
+   "label": "SMS Source Label",
+   "description": "Label saved on received SMS payment records."
+  },
+  {
+   "fieldname": "column_break_sms_enabler",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sms_enabler_token",
+   "fieldtype": "Data",
+   "label": "Webhook Token",
+   "description": "Security token used by SMS Enabler when posting SMS messages to POS Next.",
+   "read_only": 1
   },
   {
    "default": "Disabled",

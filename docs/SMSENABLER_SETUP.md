@@ -30,33 +30,16 @@ SMS Enabler is a Kenyan payment integration that allows you to receive M-Pesa pa
    - **Default Account**: Select your cash/receivables account (e.g., `Cash - KES` or `Undeposited Funds`)
    - **Save**
 
-#### 1.2 Configure SMS Enabler Token (site_config.json)
+#### 1.2 Configure SMS Enabler in POS Settings
 
-Add your SMS Enabler security token to your Frappe configuration:
+1. Open POS Next.
+2. Open **POS Settings** for the active POS Profile.
+3. Go to **Sales Management**.
+4. Enable **SMS Enabler**.
+5. Save the settings. POS Next will generate a webhook token and webhook URL.
+6. Copy the webhook URL.
 
-**File**: `frappe-bench/sites/your-site/site_config.json`
-
-```json
-{
-  "app_name": "Frappe",
-  "db_name": "your_database",
-  "db_password": "your_password",
-  "sms_enabler_token": "your_sms_enabler_webhook_token_here"
-}
-```
-
-> **Security Note**: Protect this token! It's used to authenticate incoming SMS webhooks. Change it if compromised.
-
-**Alternative**: If you can't edit site_config.json, you can skip the token (not recommended for production):
-- The token check will be bypassed if not configured
-- All SMS endpoints will be exposed without authentication
-
-#### 1.3 Restart Frappe Worker
-
-```bash
-cd frappe-bench
-bench restart
-```
+> **Security Note**: Protect this token. Regenerate it from POS Settings if it is exposed.
 
 ---
 
@@ -67,11 +50,9 @@ bench restart
 1. Log in to **SMS Enabler Console**: https://console.smsenabler.com/
 2. Go to **Settings** → **API Webhooks** or **SMS Forwarding**
 3. Add a new webhook with:
-   - **URL**: `https://your-erpnext-domain.com/api/method/pos_next.api.smsenabler_mpesa.receive_sms`
+   - **URL**: Paste the webhook URL copied from POS Settings.
    - **Method**: POST
-   - **Authentication**: Include your token in URL parameter or header:
-     - Option A (Query Parameter): `https://your-erpnext-domain.com/api/method/pos_next.api.smsenabler_mpesa.receive_sms?token=your_sms_enabler_token`
-     - Option B (Header): Add header `X-SMS-Enabler-Token: your_sms_enabler_token`
+   - **Authentication**: The copied URL already includes the token. You can also send the same token in the `X-SMS-Enabler-Token` header.
 
 4. **Test the webhook** (SMS Enabler will send a test request)
 5. Save configuration
@@ -109,25 +90,13 @@ For: Account/Invoice
 
 #### 3.2 Configure SMS Reconciliation Mode
 
-1. Still in **POS Profile**, look for **SMS Enabler Settings** section (or create custom fields):
+1. In **POS Settings**, choose **SMS Payment Reconciliation**:
    - **SMS Reconciliation Mode**: Select one:
      - `Manual`: Manual payment selection during checkout
      - `Suggested`: Auto-suggest matching payments (default)
      - `Auto`: Automatically add exact amount matches
 
-2. **Save** the profile
-
-#### 3.3 Optional: Custom Fields
-
-If fields don't exist, add them:
-
-**Field 1**: SMS Reconciliation Mode
-- **DocType**: POS Profile
-- **Fieldname**: `sms_reconciliation_mode`
-- **Fieldtype**: Select
-- **Options**: `Manual\nSuggested\nAuto`
-- **Default**: `Suggested`
-- **Insert After**: Payments section
+2. **Save** the settings.
 
 ---
 
@@ -216,7 +185,7 @@ To improve matching accuracy:
 - **Check**:
   1. Is your ERPNext publicly accessible? (`https://your-domain/`)
   2. Is webhook URL correct in SMS Enabler console?
-  3. Is `site_config.json` token correct?
+  3. Is SMS Enabler enabled in POS Settings, and is the copied webhook token current?
   4. Check Frappe error logs: **Desk** → **Error Log**
 
 ```bash
@@ -265,13 +234,7 @@ Functions to customize:
 
 For enhanced security, SMS Enabler can sign webhooks. Add to your configuration:
 
-**File**: `site_config.json`
-```json
-{
-  "sms_enabler_token": "your_token",
-  "sms_enabler_webhook_secret": "your_signing_secret"
-}
-```
+Store any advanced webhook secret in site configuration only if you customize the receiver to validate signatures. The normal token is managed in POS Settings.
 
 Then verify signature in API before processing.
 
@@ -312,12 +275,12 @@ When a payment is used:
 - [ ] SMS Enabler account created and verified
 - [ ] `Phone` Mode of Payment created
 - [ ] Mode of Payment account linked to company
-- [ ] `sms_enabler_token` added to `site_config.json`
-- [ ] Frappe restarted after config change
+- [ ] SMS Enabler enabled in POS Settings
+- [ ] Webhook URL copied from POS Settings
 - [ ] Webhook URL registered in SMS Enabler console
 - [ ] Webhook tested successfully
 - [ ] POS Profile updated with Phone payment mode
-- [ ] SMS Reconciliation Mode configured in POS Profile
+- [ ] SMS Reconciliation Mode configured in POS Settings
 - [ ] Test SMS sent and received
 - [ ] SMS parsed correctly in Payment Register
 - [ ] POS payment dialog shows SMS section
@@ -339,8 +302,8 @@ When a payment is used:
 ## 🔐 Security Best Practices
 
 1. **Protect your token**:
-   - Never commit `site_config.json` to version control
-   - Use environment variables in production
+   - Never share the webhook URL publicly
+   - Regenerate the token from POS Settings if it is exposed
    - Rotate token regularly
 
 2. **Use HTTPS only**:

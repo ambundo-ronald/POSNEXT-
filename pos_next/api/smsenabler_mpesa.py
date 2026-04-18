@@ -45,6 +45,52 @@ def _get_phone_mop_for_company(company):
 	return None
 
 
+def _get_sms_enabler_settings(pos_profile=None):
+	if not pos_profile:
+		return None
+
+	settings = frappe.db.get_value(
+		"POS Settings",
+		{"pos_profile": pos_profile, "enabled": 1},
+		[
+			"name",
+			"pos_profile",
+			"sms_enabler_enabled",
+			"sms_enabler_token",
+			"sms_enabler_source",
+		],
+		as_dict=True,
+	)
+	if not settings:
+		return None
+
+	settings["company"] = frappe.db.get_value("POS Profile", pos_profile, "company")
+	return settings
+
+
+def _get_sms_enabler_settings_by_token(token):
+	if not token:
+		return None
+
+	settings = frappe.db.get_value(
+		"POS Settings",
+		{"enabled": 1, "sms_enabler_enabled": 1, "sms_enabler_token": token},
+		[
+			"name",
+			"pos_profile",
+			"sms_enabler_enabled",
+			"sms_enabler_token",
+			"sms_enabler_source",
+		],
+		as_dict=True,
+	)
+	if not settings:
+		return None
+
+	settings["company"] = frappe.db.get_value("POS Profile", settings.pos_profile, "company")
+	return settings
+
+
 def _get_customer_match_data(customer):
 	if not customer:
 		return {"phone": "", "name": ""}
@@ -209,9 +255,27 @@ def check_sms_enabler_available(company=None, pos_profile=None):
 	if pos_profile and not company:
 		company = frappe.db.get_value("POS Profile", pos_profile, "company")
 
+	settings = _get_sms_enabler_settings(pos_profile) if pos_profile else None
+	if pos_profile and not (settings and settings.get("sms_enabler_enabled")):
+		return {
+			"available": False,
+			"reason": _("SMS Enabler is not enabled in POS Settings"),
+			"mode_of_payment": None,
+			"company": company,
+		}
+
+	mode_of_payment = _get_phone_mop_for_company(company)
+	if not mode_of_payment:
+		return {
+			"available": False,
+			"reason": _("No enabled Phone mode of payment is configured for this company"),
+			"mode_of_payment": None,
+			"company": company,
+		}
+
 	return {
 		"available": True,
-		"mode_of_payment": _get_phone_mop_for_company(company),
+		"mode_of_payment": mode_of_payment,
 		"company": company,
 	}
 
@@ -219,9 +283,32 @@ def check_sms_enabler_available(company=None, pos_profile=None):
 @frappe.whitelist(allow_guest=True)
 def receive_sms(sender=None, message=None, received_at=None, source=None, company=None, token=None):
 	"""HTTP endpoint for SMS Enabler to forward incoming SMS messages."""
+	token = (
+		token
+		or frappe.form_dict.get("token")
+		or frappe.get_request_header("X-SMS-Enabler-Token")
+		or frappe.get_request_header("X-SMS-Token")
+	)
 	expected_token = frappe.conf.get("sms_enabler_token")
-	if expected_token and token != expected_token:
-		frappe.throw(_("Invalid SMS Enabler token"), frappe.PermissionError)
+	settings = None
+	if expected_token:
+		if token != expected_token:
+			settings = _get_sms_enabler_settings_by_token(token)
+			if not settings:
+				frappe.throw(_("Invalid SMS Enabler token"), frappe.PermissionError)
+	else:
+		settings = _get_sms_enabler_settings_by_token(token)
+		if not settings:
+			configured_count = frappe.db.count(
+				"POS Settings",
+				{"enabled": 1, "sms_enabler_enabled": 1},
+			)
+			if configured_count:
+				frappe.throw(_("Invalid SMS Enabler token"), frappe.PermissionError)
+
+	if settings:
+		company = company or settings.get("company")
+		source = source or settings.get("sms_enabler_source")
 
 	message = message or frappe.form_dict.get("text") or frappe.form_dict.get("message")
 	sender = sender or frappe.form_dict.get("sender") or frappe.form_dict.get("from")

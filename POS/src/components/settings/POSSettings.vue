@@ -366,6 +366,82 @@
 												:options="smsReconciliationModeOptions"
 											/>
 											<CheckboxField
+												v-model="settings.sms_enabler_enabled"
+												:label="__('Enable SMS Enabler')"
+												:description="__('Receive forwarded payment SMS messages through the POS Next webhook')"
+											/>
+											<div
+												v-if="settings.sms_enabler_enabled"
+												class="rounded-lg border border-emerald-200 bg-emerald-50 p-4"
+											>
+												<div class="mb-3 flex items-start justify-between gap-3">
+													<div>
+														<h5 class="text-sm font-semibold text-emerald-950">
+															{{ __('SMS Enabler Webhook') }}
+														</h5>
+														<p class="mt-1 text-xs leading-relaxed text-emerald-800">
+															{{ __('Save these settings, then use this URL in SMS Enabler. Incoming messages will be stored as pending SMS payments automatically.') }}
+														</p>
+													</div>
+													<button
+														type="button"
+														class="rounded border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+														:disabled="regeneratingSmsToken"
+														@click="regenerateSmsEnablerToken"
+													>
+														{{ regeneratingSmsToken ? __('Generating...') : __('Regenerate Token') }}
+													</button>
+												</div>
+												<div class="grid gap-3 md:grid-cols-2">
+													<label class="block">
+														<span class="mb-1 block text-xs font-medium text-gray-700">
+															{{ __('Source Label') }}
+														</span>
+														<input
+															v-model="settings.sms_enabler_source"
+															type="text"
+															class="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+															:placeholder="__('SMS Enabler')"
+														/>
+													</label>
+													<label class="block">
+														<span class="mb-1 block text-xs font-medium text-gray-700">
+															{{ __('Webhook Token') }}
+														</span>
+														<input
+															:value="settings.sms_enabler_token || __('Generated after save')"
+															type="text"
+															readonly
+															class="w-full rounded border border-gray-300 bg-gray-50 px-2.5 py-1.5 text-sm text-gray-700"
+														/>
+													</label>
+												</div>
+												<label class="mt-3 block">
+													<span class="mb-1 block text-xs font-medium text-gray-700">
+														{{ __('Webhook URL') }}
+													</span>
+													<textarea
+														:value="smsEnablerWebhookUrl"
+														readonly
+														rows="2"
+														class="w-full resize-none rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+													/>
+												</label>
+												<div class="mt-2 flex flex-wrap items-center gap-2">
+													<button
+														type="button"
+														class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+														:disabled="!smsEnablerWebhookUrl"
+														@click="copySmsEnablerWebhookUrl"
+													>
+														{{ __('Copy Webhook URL') }}
+													</button>
+													<p class="text-xs text-emerald-800">
+														{{ __('SMS Enabler can send sender/from and message/text fields by POST or query string.') }}
+													</p>
+												</div>
+											</div>
+											<CheckboxField
 												v-model="settings.silent_print"
 												:label="__('Silent Print')"
 												:description="__('Print without confirmation')"
@@ -472,10 +548,15 @@ const settings = ref({
 	allow_write_off_change: 0,
 	allow_partial_payment: 0,
 	sms_payment_reconciliation_mode: "Manual",
+	sms_enabler_enabled: 0,
+	sms_enabler_source: "SMS Enabler",
+	sms_enabler_token: "",
+	sms_enabler_webhook_url: "",
 	silent_print: 0,
 	allow_negative_stock: 0,
 	tax_inclusive: 0,
 })
+const regeneratingSmsToken = ref(false)
 
 // Stock Sync Settings (localStorage persisted)
 const stockSyncEnabled = ref(false)
@@ -514,6 +595,18 @@ const smsReconciliationModeOptions = computed(() => [
 	{ label: __("Suggested"), value: "Suggested" },
 	{ label: __("Auto"), value: "Auto" },
 ])
+const smsEnablerWebhookUrl = computed(() => {
+	if (settings.value.sms_enabler_webhook_url) {
+		return settings.value.sms_enabler_webhook_url
+	}
+
+	if (settings.value.sms_enabler_token && typeof window !== "undefined") {
+		const token = encodeURIComponent(settings.value.sms_enabler_token)
+		return `${window.location.origin}/api/method/pos_next.api.smsenabler_mpesa.receive_sms?token=${token}`
+	}
+
+	return ""
+})
 
 // Resources
 const warehousesResource = createResource({
@@ -607,6 +700,44 @@ watch(
 // Methods
 function handleClose() {
 	show.value = false
+}
+
+async function copySmsEnablerWebhookUrl() {
+	if (!smsEnablerWebhookUrl.value) return
+
+	try {
+		await navigator.clipboard.writeText(smsEnablerWebhookUrl.value)
+		showSuccess(__("SMS Enabler webhook URL copied"))
+	} catch (error) {
+		log.error("Failed to copy SMS Enabler webhook URL:", error)
+		showError(__("Could not copy webhook URL"))
+	}
+}
+
+async function regenerateSmsEnablerToken() {
+	if (!props.posProfile) {
+		showError(__("POS Profile not found"))
+		return
+	}
+
+	regeneratingSmsToken.value = true
+	try {
+		const result = await call(
+			"pos_next.pos_next.doctype.pos_settings.pos_settings.regenerate_sms_enabler_token",
+			{
+				pos_profile: props.posProfile,
+			},
+		)
+		settings.value.sms_enabler_enabled = 1
+		settings.value.sms_enabler_token = result?.token || ""
+		settings.value.sms_enabler_webhook_url = result?.webhook_url || ""
+		showSuccess(__("SMS Enabler token regenerated"))
+	} catch (error) {
+		log.error("Failed to regenerate SMS Enabler token:", error)
+		showError(error.message || __("Could not regenerate SMS Enabler token"))
+	} finally {
+		regeneratingSmsToken.value = false
+	}
 }
 
 async function loadSettings() {

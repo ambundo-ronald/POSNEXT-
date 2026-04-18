@@ -3,7 +3,7 @@
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, get_url
 
 
 class POSSettings(Document):
@@ -22,6 +22,12 @@ class POSSettings(Document):
 
 		if self.sms_payment_reconciliation_mode not in ("Manual", "Suggested", "Auto"):
 			frappe.throw("SMS Payment Reconciliation must be Manual, Suggested, or Auto")
+
+		if cint(self.get("sms_enabler_enabled")):
+			if not self.get("sms_enabler_token"):
+				self.sms_enabler_token = frappe.generate_hash(length=32)
+			if not self.get("sms_enabler_source"):
+				self.sms_enabler_source = "SMS Enabler"
 
 	def on_update(self):
 		"""Sync allow_negative_stock with Stock Settings"""
@@ -111,6 +117,10 @@ def get_pos_settings(pos_profile):
 	settings["_global_allow_negative_stock"] = cint(
 		frappe.db.get_single_value("Stock Settings", "allow_negative_stock") or 0
 	)
+	settings["sms_enabler_webhook_url"] = get_sms_enabler_webhook_url(
+		pos_profile,
+		settings.get("sms_enabler_token"),
+	)
 
 	return settings
 
@@ -121,9 +131,16 @@ def create_default_settings(pos_profile):
 	doc.pos_profile = pos_profile
 	doc.enabled = 1
 	doc.sms_payment_reconciliation_mode = "Manual"
+	doc.sms_enabler_enabled = 0
+	doc.sms_enabler_source = "SMS Enabler"
 	doc.insert()
 
-	return doc.as_dict()
+	settings = doc.as_dict()
+	settings["sms_enabler_webhook_url"] = get_sms_enabler_webhook_url(
+		pos_profile,
+		settings.get("sms_enabler_token"),
+	)
+	return settings
 
 
 @frappe.whitelist()
@@ -134,6 +151,13 @@ def update_pos_settings(pos_profile, settings):
 
 	if isinstance(settings, str):
 		settings = json.loads(settings)
+
+	# Remove transient values injected for the frontend.
+	settings = {
+		key: value
+		for key, value in settings.items()
+		if not key.startswith("_") and key not in {"sms_enabler_webhook_url"}
+	}
 
 	# Check if user has access to this POS Profile
 	has_access = frappe.db.exists(
@@ -157,4 +181,55 @@ def update_pos_settings(pos_profile, settings):
 		doc.update(settings)
 		doc.insert()
 
-	return doc.as_dict()
+	result = doc.as_dict()
+	result["sms_enabler_webhook_url"] = get_sms_enabler_webhook_url(
+		pos_profile,
+		result.get("sms_enabler_token"),
+	)
+	return result
+
+
+def get_sms_enabler_webhook_url(pos_profile=None, token=None):
+	"""Return the public SMS Enabler webhook URL for this site."""
+	query = ""
+	if token:
+		from urllib.parse import urlencode
+
+		query = "?" + urlencode({"token": token})
+
+	return get_url(f"/api/method/pos_next.api.smsenabler_mpesa.receive_sms{query}")
+
+
+@frappe.whitelist()
+def regenerate_sms_enabler_token(pos_profile):
+	"""Rotate the SMS Enabler webhook token for a POS Profile."""
+	from frappe import _
+
+	if not pos_profile:
+		frappe.throw(_("POS Profile is required"))
+
+	has_access = frappe.db.exists(
+		"POS Profile User",
+		{"parent": pos_profile, "user": frappe.session.user}
+	)
+
+	if not has_access and not frappe.has_permission("POS Settings", "write"):
+		frappe.throw(_("You don't have permission to update this POS Profile"))
+
+	existing = frappe.db.exists("POS Settings", {"pos_profile": pos_profile})
+	if existing:
+		doc = frappe.get_doc("POS Settings", existing)
+	else:
+		doc = frappe.new_doc("POS Settings")
+		doc.pos_profile = pos_profile
+		doc.enabled = 1
+
+	doc.sms_enabler_enabled = 1
+	doc.sms_enabler_source = doc.get("sms_enabler_source") or "SMS Enabler"
+	doc.sms_enabler_token = frappe.generate_hash(length=32)
+	doc.save()
+
+	return {
+		"token": doc.sms_enabler_token,
+		"webhook_url": get_sms_enabler_webhook_url(pos_profile, doc.sms_enabler_token),
+	}
