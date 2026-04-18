@@ -169,21 +169,25 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { frappe } from 'frappe'
-import { Button, Autocomplete } from 'frappe-ui'
-import { useToast } from '@/composables/useToast'
+import { ref, onMounted, computed } from "vue"
+import { Button, Autocomplete } from "frappe-ui"
+import { call } from "@/utils/apiWrapper"
+import { useToast } from "@/composables/useToast"
 
 const props = defineProps({
 	posProfile: {
 		type: String,
-		required: true
-	}
+		required: true,
+	},
 })
 
-const emit = defineEmits(['update'])
+const emit = defineEmits(["update"])
 
 const { toast } = useToast()
+
+function getResponseMessage(result) {
+	return result?.message ?? result
+}
 
 // State
 const mappings = ref([])
@@ -194,10 +198,10 @@ const loadingMappings = ref(false)
 
 // Form data
 const formData = ref({
-	warehouse: '',
-	customer_group: '',
-	price_list: '',
-	name: null
+	warehouse: "",
+	customer_group: "",
+	price_list: "",
+	name: null,
 })
 
 // Autocomplete options and loading states
@@ -218,18 +222,18 @@ onMounted(async () => {
 async function loadMappings() {
 	loadingMappings.value = true
 	try {
-		const result = await frappe.call({
-			method: 'pos_next.api.price_lists.get_price_list_mappings',
-			args: {
-				pos_profile: props.posProfile
-			}
-		})
+		const result = await call(
+			"pos_next.api.price_lists.get_price_list_mappings",
+			{
+				pos_profile: props.posProfile,
+			},
+		)
 
-		mappings.value = result.message || []
-		emit('update')
+		mappings.value = getResponseMessage(result) || []
+		emit("update")
 	} catch (error) {
-		console.error('Error loading mappings:', error)
-		toast('Error loading price list mappings', 'error')
+		console.error("Error loading mappings:", error)
+		toast("Error loading price list mappings", "error")
 	} finally {
 		loadingMappings.value = false
 	}
@@ -239,25 +243,22 @@ async function loadMappings() {
 async function searchWarehouses(query) {
 	loadingWarehouses.value = true
 	try {
-		const result = await frappe.call({
-			method: 'frappe.client.get_list',
-			args: {
-				doctype: 'Warehouse',
-				fields: ['name'],
-				filters: {
-					'name': ['like', `%${query}%`],
-					'disabled': 0
-				},
-				limit_page_length: 20
-			}
+		const result = await call("frappe.client.get_list", {
+			doctype: "Warehouse",
+			fields: ["name"],
+			filters: {
+				name: ["like", `%${query}%`],
+				disabled: 0,
+			},
+			limit_page_length: 20,
 		})
 
-		warehouseOptions.value = result.message.map(r => ({
+		warehouseOptions.value = (getResponseMessage(result) || []).map((r) => ({
 			label: r.name,
-			value: r.name
+			value: r.name,
 		}))
 	} catch (error) {
-		console.error('Error searching warehouses:', error)
+		console.error("Error searching warehouses:", error)
 	} finally {
 		loadingWarehouses.value = false
 	}
@@ -267,24 +268,23 @@ async function searchWarehouses(query) {
 async function searchCustomerGroups(query) {
 	loadingCustomerGroups.value = true
 	try {
-		const result = await frappe.call({
-			method: 'frappe.client.get_list',
-			args: {
-				doctype: 'Customer Group',
-				fields: ['name'],
-				filters: {
-					'name': ['like', `%${query}%`]
-				},
-				limit_page_length: 20
-			}
+		const result = await call("frappe.client.get_list", {
+			doctype: "Customer Group",
+			fields: ["name"],
+			filters: {
+				name: ["like", `%${query}%`],
+			},
+			limit_page_length: 20,
 		})
 
-		customerGroupOptions.value = result.message.map(r => ({
-			label: r.name,
-			value: r.name
-		}))
+		customerGroupOptions.value = (getResponseMessage(result) || []).map(
+			(r) => ({
+				label: r.name,
+				value: r.name,
+			}),
+		)
 	} catch (error) {
-		console.error('Error searching customer groups:', error)
+		console.error("Error searching customer groups:", error)
 	} finally {
 		loadingCustomerGroups.value = false
 	}
@@ -294,25 +294,22 @@ async function searchCustomerGroups(query) {
 async function searchPriceLists(query) {
 	loadingPriceLists.value = true
 	try {
-		const result = await frappe.call({
-			method: 'frappe.client.get_list',
-			args: {
-				doctype: 'Price List',
-				fields: ['name'],
-				filters: {
-					'name': ['like', `%${query}%`],
-					'enabled': 1
-				},
-				limit_page_length: 20
-			}
+		const result = await call("frappe.client.get_list", {
+			doctype: "Price List",
+			fields: ["name"],
+			filters: {
+				name: ["like", `%${query}%`],
+				enabled: 1,
+			},
+			limit_page_length: 20,
 		})
 
-		priceListOptions.value = result.message.map(r => ({
+		priceListOptions.value = (getResponseMessage(result) || []).map((r) => ({
 			label: r.name,
-			value: r.name
+			value: r.name,
 		}))
 	} catch (error) {
-		console.error('Error searching price lists:', error)
+		console.error("Error searching price lists:", error)
 	} finally {
 		loadingPriceLists.value = false
 	}
@@ -344,7 +341,7 @@ function editMapping(mapping) {
 		warehouse: mapping.warehouse,
 		customer_group: mapping.customer_group,
 		price_list: mapping.price_list,
-		name: mapping.name
+		name: mapping.name,
 	}
 	isEditMode.value = true
 	showDialog.value = true
@@ -353,31 +350,36 @@ function editMapping(mapping) {
 // Save mapping
 async function saveMapping() {
 	// Validate
-	if (!formData.value.warehouse || !formData.value.customer_group || !formData.value.price_list) {
-		toast('Please fill in all fields', 'error')
+	if (
+		!formData.value.warehouse ||
+		!formData.value.customer_group ||
+		!formData.value.price_list
+	) {
+		toast("Please fill in all fields", "error")
 		return
 	}
 
 	savingMapping.value = true
 	try {
-		const result = await frappe.call({
-			method: 'pos_next.api.price_lists.save_price_list_mapping',
-			args: {
+		const result = await call(
+			"pos_next.api.price_lists.save_price_list_mapping",
+			{
 				pos_profile: props.posProfile,
 				warehouse: formData.value.warehouse,
 				customer_group: formData.value.customer_group,
-				price_list: formData.value.price_list
-			}
-		})
+				price_list: formData.value.price_list,
+			},
+		)
+		const message = getResponseMessage(result)
 
-		if (result.message.success) {
-			toast(result.message.message, 'success')
+		if (message?.success) {
+			toast(message.message, "success")
 			closeDialog()
 			await loadMappings()
 		}
 	} catch (error) {
-		console.error('Error saving mapping:', error)
-		toast('Error saving mapping', 'error')
+		console.error("Error saving mapping:", error)
+		toast("Error saving mapping", "error")
 	} finally {
 		savingMapping.value = false
 	}
@@ -385,35 +387,36 @@ async function saveMapping() {
 
 // Delete mapping
 async function deleteMapping(mapping) {
-	if (!confirm(__('Are you sure you want to delete this mapping?'))) {
+	if (!confirm(__("Are you sure you want to delete this mapping?"))) {
 		return
 	}
 
 	try {
-		const result = await frappe.call({
-			method: 'pos_next.api.price_lists.delete_price_list_mapping',
-			args: {
-				mapping_name: mapping.name
-			}
-		})
+		const result = await call(
+			"pos_next.api.price_lists.delete_price_list_mapping",
+			{
+				mapping_name: mapping.name,
+			},
+		)
+		const message = getResponseMessage(result)
 
-		if (result.message.success) {
-			toast(result.message.message, 'success')
+		if (message?.success) {
+			toast(message.message, "success")
 			await loadMappings()
 		}
 	} catch (error) {
-		console.error('Error deleting mapping:', error)
-		toast('Error deleting mapping', 'error')
+		console.error("Error deleting mapping:", error)
+		toast("Error deleting mapping", "error")
 	}
 }
 
 // Reset form
 function resetForm() {
 	formData.value = {
-		warehouse: '',
-		customer_group: '',
-		price_list: '',
-		name: null
+		warehouse: "",
+		customer_group: "",
+		price_list: "",
+		name: null,
 	}
 }
 

@@ -1,11 +1,15 @@
 // Composable for managing conditional price list selection
 // Based on warehouse and customer group mappings
 
-import { ref, watch, computed } from 'vue'
-import { frappe } from 'frappe'
-import { logger } from '@/utils/logger'
+import { ref, watch, computed } from "vue"
+import { call } from "@/utils/apiWrapper"
+import { logger } from "@/utils/logger"
 
-const log = logger.create('usePriceListResolver')
+const log = logger.create("usePriceListResolver")
+
+function getResponseMessage(result) {
+	return result?.message ?? result
+}
 
 export function usePriceListResolver() {
 	// State
@@ -22,18 +26,20 @@ export function usePriceListResolver() {
 
 		loadingMappings.value = true
 		try {
-			const result = await frappe.call({
-				method: 'pos_next.api.price_lists.get_price_list_mappings',
-				args: {
-					pos_profile: posProfile
-				}
-			})
+			const result = await call(
+				"pos_next.api.price_lists.get_price_list_mappings",
+				{
+					pos_profile: posProfile,
+				},
+			)
 
-			priceLists.value = result.message || []
+			priceLists.value = getResponseMessage(result) || []
 			mappingError.value = null
-			log.debug('Loaded price list mappings', { count: priceLists.value.length })
+			log.debug("Loaded price list mappings", {
+				count: priceLists.value.length,
+			})
 		} catch (error) {
-			log.error('Error loading price list mappings:', error)
+			log.error("Error loading price list mappings:", error)
 			mappingError.value = error.message
 			priceLists.value = []
 		} finally {
@@ -43,13 +49,15 @@ export function usePriceListResolver() {
 
 	/**
 	 * Resolve the appropriate price list for the given warehouse and customer group
-	 * 
+	 *
 	 * Returns the mapped price list name if a mapping exists, otherwise null
 	 */
 	async function resolvePriceList(posProfile, warehouse, customerGroup) {
 		if (!posProfile || !warehouse || !customerGroup) {
-			log.debug('Cannot resolve price list - missing parameters', {
-				posProfile, warehouse, customerGroup
+			log.debug("Cannot resolve price list - missing parameters", {
+				posProfile,
+				warehouse,
+				customerGroup,
 			})
 			return null
 		}
@@ -57,43 +65,40 @@ export function usePriceListResolver() {
 		try {
 			// First try to find in locally loaded mappings for performance
 			const localMapping = priceLists.value.find(
-				m => m.warehouse === warehouse && m.customer_group === customerGroup
+				(m) => m.warehouse === warehouse && m.customer_group === customerGroup,
 			)
 
 			if (localMapping) {
-				log.debug('Found local price list mapping', { 
-					warehouse, 
-					customerGroup, 
-					priceList: localMapping.price_list 
+				log.debug("Found local price list mapping", {
+					warehouse,
+					customerGroup,
+					priceList: localMapping.price_list,
 				})
 				return localMapping.price_list
 			}
 
 			// If not found locally, query server (in case mappings were added by another user)
-			const result = await frappe.call({
-				method: 'pos_next.api.price_lists.resolve_price_list',
-				args: {
-					pos_profile: posProfile,
-					warehouse: warehouse,
-					customer_group: customerGroup
-				}
+			const result = await call("pos_next.api.price_lists.resolve_price_list", {
+				pos_profile: posProfile,
+				warehouse: warehouse,
+				customer_group: customerGroup,
 			})
 
-			const resolvedPriceList = result.message
+			const resolvedPriceList = getResponseMessage(result)
 
 			if (resolvedPriceList) {
-				log.debug('Resolved price list from server', {
+				log.debug("Resolved price list from server", {
 					warehouse,
 					customerGroup,
-					priceList: resolvedPriceList
+					priceList: resolvedPriceList,
 				})
 				return resolvedPriceList
 			}
 
-			log.debug('No price list mapping found', { warehouse, customerGroup })
+			log.debug("No price list mapping found", { warehouse, customerGroup })
 			return null
 		} catch (error) {
-			log.error('Error resolving price list:', error)
+			log.error("Error resolving price list:", error)
 			return null
 		}
 	}
@@ -102,14 +107,14 @@ export function usePriceListResolver() {
 	 * Find all mappings for a specific warehouse
 	 */
 	function getMappingsForWarehouse(warehouse) {
-		return priceLists.value.filter(m => m.warehouse === warehouse)
+		return priceLists.value.filter((m) => m.warehouse === warehouse)
 	}
 
 	/**
 	 * Find all mappings for a specific customer group
 	 */
 	function getMappingsForCustomerGroup(customerGroup) {
-		return priceLists.value.filter(m => m.customer_group === customerGroup)
+		return priceLists.value.filter((m) => m.customer_group === customerGroup)
 	}
 
 	/**
@@ -121,15 +126,17 @@ export function usePriceListResolver() {
 	 * Get summary of configured mappings
 	 */
 	const mappingsSummary = computed(() => {
-		const warehouses = new Set(priceLists.value.map(m => m.warehouse))
-		const customerGroups = new Set(priceLists.value.map(m => m.customer_group))
+		const warehouses = new Set(priceLists.value.map((m) => m.warehouse))
+		const customerGroups = new Set(
+			priceLists.value.map((m) => m.customer_group),
+		)
 
 		return {
 			totalMappings: priceLists.value.length,
 			uniqueWarehouses: warehouses.size,
 			uniqueCustomerGroups: customerGroups.size,
 			warehouses: Array.from(warehouses),
-			customerGroups: Array.from(customerGroups)
+			customerGroups: Array.from(customerGroups),
 		}
 	})
 
@@ -146,6 +153,6 @@ export function usePriceListResolver() {
 		loadMappings,
 		resolvePriceList,
 		getMappingsForWarehouse,
-		getMappingsForCustomerGroup
+		getMappingsForCustomerGroup,
 	}
 }
