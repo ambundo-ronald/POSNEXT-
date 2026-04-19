@@ -43,7 +43,7 @@ def get_customers(search_term="", pos_profile=None, limit=20):
         result = frappe.get_all(
             "Customer",
             filters=filters,
-            fields=["name", "customer_name", "mobile_no", "email_id"],
+            fields=["name", "customer_name", "mobile_no", "email_id", "customer_group"],
             limit=customer_limit,
             order_by="customer_name asc",
         )

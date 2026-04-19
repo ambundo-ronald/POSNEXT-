@@ -348,6 +348,7 @@ def search_by_barcode(barcode, pos_profile, customer=None, customer_group=None):
 			pos_profile_doc,
 			customer=customer,
 			customer_group=customer_group,
+			warehouse=pos_profile_doc.warehouse,
 		)
 
 		# Validate POS Profile has required fields
@@ -483,6 +484,7 @@ def get_item_variants(template_item, pos_profile, customer=None, customer_group=
 			pos_profile_doc,
 			customer=customer,
 			customer_group=customer_group,
+			warehouse=pos_profile_doc.warehouse,
 		)
 
 		# Get all variants of this template
@@ -968,6 +970,7 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 			pos_profile_doc,
 			customer=customer,
 			customer_group=customer_group,
+			warehouse=pos_profile_doc.warehouse,
 		)
 
 		filters = {
@@ -1316,6 +1319,7 @@ def get_item_details(item_code, pos_profile, customer=None, customer_group=None,
 			pos_profile_doc,
 			customer=customer,
 			customer_group=customer_group,
+			warehouse=pos_profile_doc.warehouse,
 		)
 		item_doc = frappe.get_cached_doc("Item", item_code)
 

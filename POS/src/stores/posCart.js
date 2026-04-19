@@ -616,6 +616,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				item_code: itemCode,
 				pos_profile: posProfile.value,
 				customer: customer.value?.name || customer.value,
+				customer_group: customer.value?.customer_group,
 				qty: cartItem.quantity,
 				uom: newUom,
 			})
@@ -654,6 +655,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 						item_code: itemCode,
 						pos_profile: posProfile.value,
 						customer: customer.value?.name || customer.value,
+						customer_group: customer.value?.customer_group,
 						qty: updatedDetails.quantity || cartItem.quantity,
 						uom: updatedDetails.uom,
 					})

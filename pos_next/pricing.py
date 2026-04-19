@@ -38,12 +38,13 @@ def get_customer_group(customer=None, customer_group=None):
 		return None
 
 
-def resolve_profile_selling_price_list(pos_profile, customer=None, customer_group=None):
+def resolve_profile_selling_price_list(pos_profile, customer=None, customer_group=None, warehouse=None):
 	"""
 	Resolve the effective selling price list for a POS Profile.
 
-	When customer-group pricing is disabled or no matching row exists, the
-	profile's default selling price list is returned.
+	POS Settings conditional mappings are preferred when a warehouse and
+	customer group match. When no mapping exists, the POS Profile customer-group
+	table is used. Finally, the profile's default selling price list is returned.
 	"""
 	pos_profile_doc = (
 		pos_profile
@@ -52,10 +53,31 @@ def resolve_profile_selling_price_list(pos_profile, customer=None, customer_grou
 	)
 
 	default_price_list = getattr(pos_profile_doc, "selling_price_list", None)
+	resolved_group = get_customer_group(customer=customer, customer_group=customer_group)
+	resolved_warehouse = warehouse or getattr(pos_profile_doc, "warehouse", None)
+
+	if resolved_group and resolved_warehouse:
+		try:
+			mapped_price_list = frappe.db.get_value(
+				"POS Price List Mapping",
+				{
+					"pos_profile": pos_profile_doc.name,
+					"warehouse": resolved_warehouse,
+					"customer_group": resolved_group,
+					"enabled": 1,
+				},
+				"price_list",
+			)
+			if mapped_price_list:
+				return mapped_price_list
+		except Exception:
+			# Mapping doctype may not be installed on older sites. Fall back to
+			# POS Profile pricing below.
+			pass
+
 	if not getattr(pos_profile_doc, "posa_enable_customer_group_price_lists", 0):
 		return default_price_list
 
-	resolved_group = get_customer_group(customer=customer, customer_group=customer_group)
 	if not resolved_group:
 		return default_price_list
 

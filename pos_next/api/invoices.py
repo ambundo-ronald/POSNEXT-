@@ -391,6 +391,11 @@ def update_invoice(data):
                 pos_profile_doc,
                 customer=invoice_doc.get("customer"),
                 customer_group=invoice_doc.get("customer_group"),
+                warehouse=(
+                    invoice_doc.get("items", [{}])[0].get("warehouse")
+                    if invoice_doc.get("items")
+                    else pos_profile_doc.warehouse
+                ),
             )
             if effective_price_list:
                 invoice_doc.selling_price_list = effective_price_list
@@ -1384,6 +1389,11 @@ def apply_offers(invoice_data, selected_offers=None):
                     profile,
                     customer=customer,
                     customer_group=customer_group,
+                    warehouse=(
+                        invoice.get("items", [{}])[0].get("warehouse")
+                        if invoice.get("items")
+                        else profile.warehouse
+                    ),
                 ),
                 "customer": customer,
                 "customer_group": customer_group,

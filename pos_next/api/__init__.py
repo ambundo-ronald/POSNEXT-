@@ -10,6 +10,7 @@ from . import shifts
 from . import pos_profile
 from . import customers
 from . import offers
+from . import price_lists
 from . import promotions
 from . import utilities
 

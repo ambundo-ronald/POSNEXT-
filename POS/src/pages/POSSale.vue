@@ -167,6 +167,7 @@
 					<ItemsSelector
 						ref="itemsSelectorRef"
 						:pos-profile="shiftStore.profileName"
+						:customer="cartStore.customer"
 						:cart-items="cartStore.invoiceItems"
 						:currency="shiftStore.profileCurrency"
 						@item-selected="handleItemSelected"
@@ -1799,6 +1800,7 @@ async function handleOptionSelected(option) {
 				item_code: cartStore.pendingItem.item_code,
 				pos_profile: cartStore.posProfile,
 				customer: cartStore.customer?.name || cartStore.customer,
+				customer_group: cartStore.customer?.customer_group,
 				qty: qty,
 				uom: option.uom,
 			})
