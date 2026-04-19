@@ -789,7 +789,23 @@ def get_invoice(invoice_name):
 	# Get invoice document
 	invoice = frappe.get_doc("Sales Invoice", invoice_name)
 
-	return invoice.as_dict()
+	invoice_data = invoice.as_dict()
+
+	try:
+		from pos_next.api.partial_payments import get_payment_history
+
+		payment_data = get_payment_history(invoice_name, include_metadata=True)
+		invoice_data.paid_amount = payment_data.get("total_paid")
+		invoice_data.outstanding_amount = payment_data.get("outstanding")
+		if payment_data.get("payments"):
+			invoice_data.payments = payment_data.get("payments")
+	except Exception:
+		frappe.log_error(
+			title=f"Failed to enrich invoice payment history for {invoice_name}",
+			message=frappe.get_traceback(),
+		)
+
+	return invoice_data
 
 
 @frappe.whitelist()

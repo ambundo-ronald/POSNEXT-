@@ -466,6 +466,7 @@
 			:pos-profile="shiftStore.profileName"
 			:currency="shiftStore.profileCurrency"
 			@print-invoice="handlePrintInvoice"
+			@payment-reconciled="handleInvoicePaymentReconciled"
 		/>
 
 		<!-- Clear Cart Confirmation Dialog -->
@@ -2373,6 +2374,10 @@ async function loadInvoiceHistoryData() {
 function handleViewInvoice(invoice) {
 	selectedInvoiceForView.value = invoice.name || invoice
 	showInvoiceDetail.value = true
+}
+
+async function handleInvoicePaymentReconciled() {
+	await loadInvoiceHistoryData()
 }
 
 // Centralized print handler - uses printInvoice.js utilities

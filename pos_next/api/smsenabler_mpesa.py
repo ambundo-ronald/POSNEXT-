@@ -299,6 +299,22 @@ def _find_payment_entry_for_sms(invoice, transaction_id=None, amount=None):
 	return result[0].name if result else None
 
 
+def _has_invoice_access(invoice_doc, permtype="read"):
+	if frappe.has_permission("Sales Invoice", permtype, invoice_doc.name):
+		return True
+
+	pos_profile = invoice_doc.get("pos_profile")
+	if not pos_profile:
+		return False
+
+	return bool(
+		frappe.db.exists(
+			"POS Profile User",
+			{"parent": pos_profile, "user": frappe.session.user},
+		)
+	)
+
+
 @frappe.whitelist()
 def check_sms_enabler_available(company=None, pos_profile=None):
 	if pos_profile and not company:
@@ -498,6 +514,157 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 		reverse=True,
 	)
 	return {"count": total_count, "payments": matches}
+
+
+@frappe.whitelist()
+def get_sms_payment_matches_for_invoice(invoice=None, search=None):
+	if not invoice:
+		frappe.throw(_("Sales Invoice is required"))
+	if not frappe.db.exists("Sales Invoice", invoice):
+		frappe.throw(_("Sales Invoice {0} does not exist").format(invoice))
+
+	invoice_doc = frappe.get_doc("Sales Invoice", invoice)
+	if not _has_invoice_access(invoice_doc, "read"):
+		frappe.throw(_("You don't have permission to view this invoice"), frappe.PermissionError)
+	if invoice_doc.docstatus != 1:
+		frappe.throw(_("Only submitted invoices can be reconciled"))
+	if invoice_doc.is_return:
+		frappe.throw(_("Return invoices cannot be reconciled from SMS Enabler payments"))
+
+	outstanding = flt(invoice_doc.outstanding_amount)
+	if outstanding <= 0:
+		return {"count": 0, "payments": [], "outstanding_amount": outstanding}
+
+	result = get_sms_payments(
+		company=invoice_doc.company,
+		pos_profile=invoice_doc.pos_profile,
+		search=search,
+		amount=outstanding,
+		customer=invoice_doc.customer,
+	)
+	result["invoice"] = invoice_doc.name
+	result["outstanding_amount"] = outstanding
+	return result
+
+
+@frappe.whitelist()
+def reconcile_invoice_with_sms_payments(invoice=None, sms_payments=None):
+	if not invoice:
+		frappe.throw(_("Sales Invoice is required"))
+	if not frappe.db.exists("Sales Invoice", invoice):
+		frappe.throw(_("Sales Invoice {0} does not exist").format(invoice))
+
+	invoice_doc = frappe.get_doc("Sales Invoice", invoice)
+	if not _has_invoice_access(invoice_doc, "read"):
+		frappe.throw(_("You don't have permission to view this invoice"), frappe.PermissionError)
+	if invoice_doc.docstatus != 1:
+		frappe.throw(_("Only submitted invoices can be reconciled"))
+	if invoice_doc.is_return:
+		frappe.throw(_("Return invoices cannot be reconciled from SMS Enabler payments"))
+
+	names = _parse_payment_names(sms_payments)
+	if not names:
+		frappe.throw(_("No SMS Enabler payments selected"))
+
+	outstanding = flt(invoice_doc.outstanding_amount)
+	if outstanding <= 0:
+		frappe.throw(_("Invoice {0} is already fully paid").format(invoice))
+
+	mode_of_payment = _get_phone_mop_for_company(invoice_doc.company)
+	payments_to_create = []
+	selected_payments = []
+	linked_entries = {}
+
+	for name in names:
+		payment = frappe.get_doc(SMS_REGISTER_DOCTYPE, name)
+		if payment.status not in ("Pending", "Matched"):
+			frappe.throw(_("SMS payment {0} is already {1}").format(name, payment.status))
+		if payment.company and payment.company != invoice_doc.company:
+			frappe.throw(_("SMS payment {0} belongs to company {1}").format(name, payment.company))
+
+		amount = flt(payment.amount)
+		if amount <= 0:
+			frappe.throw(_("SMS payment {0} has no valid amount").format(name))
+
+		selected_mode = payment.mode_of_payment or mode_of_payment
+		if not selected_mode:
+			frappe.throw(_("No enabled Phone mode of payment is configured for company {0}").format(invoice_doc.company))
+
+		existing_payment_entry = payment.payment_entry or _find_payment_entry_for_sms(
+			invoice,
+			transaction_id=payment.transaction_id,
+			amount=amount,
+		)
+
+		selected_payments.append((payment, selected_mode))
+		if existing_payment_entry:
+			linked_entries[name] = existing_payment_entry
+			continue
+
+		payments_to_create.append(
+			{
+				"name": name,
+				"payload": {
+					"mode_of_payment": selected_mode,
+					"amount": amount,
+					"reference_no": payment.transaction_id or payment.name,
+				},
+			}
+		)
+
+	total_new_amount = sum(flt(item["payload"]["amount"]) for item in payments_to_create)
+	if total_new_amount > outstanding + 0.01:
+		frappe.throw(
+			_("Selected payment amount {0} exceeds outstanding amount {1}").format(
+				frappe.format_value(total_new_amount, {"fieldtype": "Currency"}),
+				frappe.format_value(outstanding, {"fieldtype": "Currency"}),
+			)
+		)
+
+	payment_entries_created = []
+	if payments_to_create:
+		from pos_next.api.partial_payments import add_payment_to_partial_invoice
+
+		result = add_payment_to_partial_invoice(
+			invoice,
+			[item["payload"] for item in payments_to_create],
+		)
+		payment_entries_created = result.get("payment_entries_created") or []
+
+		for item, payment_entry in zip(payments_to_create, payment_entries_created):
+			linked_entries[item["name"]] = payment_entry
+
+	processed = []
+	for payment, selected_mode in selected_payments:
+		payment.customer = invoice_doc.customer
+		payment.company = invoice_doc.company
+		payment.sales_invoice = invoice
+		payment.mode_of_payment = selected_mode
+		payment.payment_entry = linked_entries.get(payment.name) or payment.payment_entry
+		payment.status = "Consumed"
+		payment.flags.ignore_permissions = True
+		payment.save()
+
+		processed.append(
+			{
+				"name": payment.name,
+				"amount": flt(payment.amount),
+				"mode_of_payment": payment.mode_of_payment,
+				"sales_invoice": invoice,
+				"payment_entry": payment.payment_entry,
+			}
+		)
+
+	invoice_doc.reload()
+	return {
+		"success": True,
+		"invoice": invoice,
+		"status": invoice_doc.status,
+		"paid_amount": flt(invoice_doc.paid_amount),
+		"outstanding_amount": flt(invoice_doc.outstanding_amount),
+		"payment_entries_created": payment_entries_created,
+		"processed": processed,
+	}
 
 
 @frappe.whitelist()

@@ -459,20 +459,16 @@
 									v-for="payment in mpesaPayments"
 									:key="payment.name"
 									@click="toggleMpesaPayment(payment)"
-									:disabled="isMpesaAlreadyAdded(payment.name)"
 									:class="[
 										'flex w-full items-center gap-3 border-b border-gray-100 p-3 text-start last:border-b-0 transition-colors',
 										isMpesaAlreadyAdded(payment.name)
-											? 'cursor-not-allowed bg-gray-50 opacity-60'
-											: isMpesaSelected(payment.name)
 											? 'bg-green-50'
 											: 'hover:bg-green-50'
 									]"
 								>
 									<input
 										type="checkbox"
-										:checked="isMpesaSelected(payment.name) || isMpesaAlreadyAdded(payment.name)"
-										:disabled="isMpesaAlreadyAdded(payment.name)"
+										:checked="isMpesaAlreadyAdded(payment.name)"
 										class="h-4 w-4 accent-green-600"
 										@click.stop="toggleMpesaPayment(payment)"
 									/>
@@ -500,20 +496,11 @@
 
 						<div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 							<div class="text-xs text-gray-600">
-								{{ __('Selected: {0} payment(s), {1}', [selectedMpesaPayments.length, formatCurrency(selectedMpesaTotal)]) }}
+								{{ __('Applied to breakdown: {0} payment(s), {1}', [appliedMpesaPaymentCount, formatCurrency(appliedMpesaTotal)]) }}
 							</div>
-							<button
-								@click="addSelectedMpesaPayments"
-								:disabled="selectedMpesaPayments.length === 0"
-								:class="[
-									'h-9 rounded-lg px-3 text-xs font-semibold transition-colors',
-									selectedMpesaPayments.length === 0
-										? 'cursor-not-allowed bg-green-200 text-white'
-										: 'bg-green-600 text-white hover:bg-green-700'
-								]"
-							>
-								{{ __('Add Selected') }}
-							</button>
+							<div class="text-xs font-medium text-green-700">
+								{{ __('Tick to add, untick to remove') }}
+							</div>
 						</div>
 					</div>
 				</div>
@@ -585,20 +572,16 @@
 									v-for="payment in smsEnablerPayments"
 									:key="payment.name"
 									@click="toggleSmsEnablerPayment(payment)"
-									:disabled="isSmsEnablerAlreadyAdded(payment.name)"
 									:class="[
 										'flex w-full items-center gap-3 border-b border-gray-100 p-3 text-start last:border-b-0 transition-colors',
 										isSmsEnablerAlreadyAdded(payment.name)
-											? 'cursor-not-allowed bg-gray-50 opacity-60'
-											: isSmsEnablerSelected(payment.name)
 											? 'bg-emerald-50'
 											: 'hover:bg-emerald-50'
 									]"
 								>
 									<input
 										type="checkbox"
-										:checked="isSmsEnablerSelected(payment.name) || isSmsEnablerAlreadyAdded(payment.name)"
-										:disabled="isSmsEnablerAlreadyAdded(payment.name)"
+										:checked="isSmsEnablerAlreadyAdded(payment.name)"
 										class="h-4 w-4 accent-emerald-600"
 										@click.stop="toggleSmsEnablerPayment(payment)"
 									/>
@@ -627,20 +610,11 @@
 
 						<div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 							<div class="text-xs text-gray-600">
-								{{ __('Selected: {0} payment(s), {1}', [selectedSmsEnablerPayments.length, formatCurrency(selectedSmsEnablerTotal)]) }}
+								{{ __('Applied to breakdown: {0} payment(s), {1}', [appliedSmsEnablerPaymentCount, formatCurrency(appliedSmsEnablerTotal)]) }}
 							</div>
-							<button
-								@click="addSelectedSmsEnablerPayments"
-								:disabled="selectedSmsEnablerPayments.length === 0"
-								:class="[
-									'h-9 rounded-lg px-3 text-xs font-semibold transition-colors',
-									selectedSmsEnablerPayments.length === 0
-										? 'cursor-not-allowed bg-emerald-200 text-white'
-										: 'bg-emerald-600 text-white hover:bg-emerald-700'
-								]"
-							>
-								{{ __('Add Selected SMS') }}
-							</button>
+							<div class="text-xs font-medium text-emerald-700">
+								{{ __('Tick to add, untick to remove') }}
+							</div>
 						</div>
 					</div>
 				</div>
@@ -1366,23 +1340,8 @@ function isMpesaAlreadyAdded(paymentName) {
 	return addedMpesaNames.value.includes(paymentName)
 }
 
-function toggleMpesaPayment(payment) {
-	if (isMpesaAlreadyAdded(payment.name)) {
-		return
-	}
-
-	if (isMpesaSelected(payment.name)) {
-		selectedMpesaPayments.value = selectedMpesaPayments.value.filter(
-			(item) => item.name !== payment.name,
-		)
-	} else {
-		selectedMpesaPayments.value.push(payment)
-	}
-}
-
-function addSelectedMpesaPayments() {
-	if (!selectedMpesaPayments.value.length) {
-		showWarning(__("Select at least one M-Pesa payment"))
+function addMpesaPayment(payment) {
+	if (!payment || isMpesaAlreadyAdded(payment.name)) {
 		return
 	}
 
@@ -1391,32 +1350,40 @@ function addSelectedMpesaPayments() {
 		return
 	}
 
-	for (const payment of selectedMpesaPayments.value) {
-		if (isMpesaAlreadyAdded(payment.name)) {
-			continue
-		}
-
-		const amount = Number.parseFloat(payment.transamount || 0)
-		if (!amount || amount <= 0) {
-			continue
-		}
-
-		paymentEntries.value.push({
-			mode_of_payment: mpesaModeOfPayment.value,
-			amount,
-			type: "Phone",
-			is_mpesa: true,
-			mpesa_payment_name: payment.name,
-			mpesa_transaction_id: payment.transid || payment.name,
-			reference_no: payment.transid || payment.name,
-		})
+	const amount = Number.parseFloat(payment.transamount || 0)
+	if (!amount || amount <= 0) {
+		return
 	}
 
-	showSuccess(__("M-Pesa payment added"))
+	paymentEntries.value.push({
+		mode_of_payment: mpesaModeOfPayment.value,
+		amount,
+		type: "Phone",
+		is_mpesa: true,
+		mpesa_payment_name: payment.name,
+		mpesa_transaction_id: payment.transid || payment.name,
+		reference_no: payment.transid || payment.name,
+	})
+}
+
+function removeMpesaPayment(paymentName) {
+	paymentEntries.value = paymentEntries.value.filter(
+		(entry) => !(entry.is_mpesa && entry.mpesa_payment_name === paymentName),
+	)
+}
+
+function toggleMpesaPayment(payment) {
+	if (isMpesaAlreadyAdded(payment.name)) {
+		removeMpesaPayment(payment.name)
+		return
+	}
+
+	addMpesaPayment(payment)
+}
+
+function addSelectedMpesaPayments() {
+	selectedMpesaPayments.value.forEach((payment) => addMpesaPayment(payment))
 	selectedMpesaPayments.value = []
-	showMpesaPanel.value = false
-	mpesaSearch.value = ""
-	mpesaPayments.value = []
 }
 
 function stopMpesaStkPolling() {
@@ -1519,8 +1486,8 @@ function addDetectedMpesaPayment() {
 		return
 	}
 
-	selectedMpesaPayments.value = [mpesaStkMatch.value]
-	addSelectedMpesaPayments()
+	addMpesaPayment(mpesaStkMatch.value)
+	showSuccess(__("M-Pesa payment added"))
 }
 
 async function checkSmsEnablerAvailability() {
@@ -1617,23 +1584,8 @@ function isSmsEnablerAlreadyAdded(paymentName) {
 	return paymentEntries.value.some((entry) => entry.is_sms_enabler && entry.sms_payment_name === paymentName)
 }
 
-function toggleSmsEnablerPayment(payment) {
-	if (isSmsEnablerAlreadyAdded(payment.name)) {
-		return
-	}
-
-	if (isSmsEnablerSelected(payment.name)) {
-		selectedSmsEnablerPayments.value = selectedSmsEnablerPayments.value.filter(
-			(item) => item.name !== payment.name,
-		)
-	} else {
-		selectedSmsEnablerPayments.value.push(payment)
-	}
-}
-
-function addSelectedSmsEnablerPayments() {
-	if (!selectedSmsEnablerPayments.value.length) {
-		showWarning(__("Select at least one SMS Enabler payment"))
+function addSmsEnablerPayment(payment) {
+	if (!payment || isSmsEnablerAlreadyAdded(payment.name)) {
 		return
 	}
 
@@ -1642,32 +1594,40 @@ function addSelectedSmsEnablerPayments() {
 		return
 	}
 
-	for (const payment of selectedSmsEnablerPayments.value) {
-		if (isSmsEnablerAlreadyAdded(payment.name)) {
-			continue
-		}
-
-		const amount = Number.parseFloat(payment.amount || 0)
-		if (!amount || amount <= 0) {
-			continue
-		}
-
-		paymentEntries.value.push({
-			mode_of_payment: payment.mode_of_payment || smsEnablerModeOfPayment.value,
-			amount,
-			type: "Phone",
-			is_sms_enabler: true,
-			sms_payment_name: payment.name,
-			sms_transaction_id: payment.transaction_id || payment.name,
-			reference_no: payment.transaction_id || payment.name,
-		})
+	const amount = Number.parseFloat(payment.amount || 0)
+	if (!amount || amount <= 0) {
+		return
 	}
 
-	showSuccess(__("SMS Enabler payment added"))
+	paymentEntries.value.push({
+		mode_of_payment: payment.mode_of_payment || smsEnablerModeOfPayment.value,
+		amount,
+		type: "Phone",
+		is_sms_enabler: true,
+		sms_payment_name: payment.name,
+		sms_transaction_id: payment.transaction_id || payment.name,
+		reference_no: payment.transaction_id || payment.name,
+	})
+}
+
+function removeSmsEnablerPayment(paymentName) {
+	paymentEntries.value = paymentEntries.value.filter(
+		(entry) => !(entry.is_sms_enabler && entry.sms_payment_name === paymentName),
+	)
+}
+
+function toggleSmsEnablerPayment(payment) {
+	if (isSmsEnablerAlreadyAdded(payment.name)) {
+		removeSmsEnablerPayment(payment.name)
+		return
+	}
+
+	addSmsEnablerPayment(payment)
+}
+
+function addSelectedSmsEnablerPayments() {
+	selectedSmsEnablerPayments.value.forEach((payment) => addSmsEnablerPayment(payment))
 	selectedSmsEnablerPayments.value = []
-	showSmsEnablerPanel.value = false
-	smsEnablerSearch.value = ""
-	smsEnablerPayments.value = []
 }
 
 function autoApplySmsEnablerMatch() {
@@ -1686,8 +1646,7 @@ function autoApplySmsEnablerMatch() {
 		return
 	}
 
-	selectedSmsEnablerPayments.value = [highConfidenceMatches[0]]
-	addSelectedSmsEnablerPayments()
+	addSmsEnablerPayment(highConfidenceMatches[0])
 	smsEnablerAutoApplied.value = true
 	showSuccess(__("SMS Enabler payment matched automatically"))
 }
@@ -1733,6 +1692,26 @@ const selectedSmsEnablerTotal = computed(() => {
 		),
 	)
 })
+
+const appliedMpesaPayments = computed(() =>
+	paymentEntries.value.filter((entry) => entry.is_mpesa && entry.mpesa_payment_name),
+)
+
+const appliedMpesaPaymentCount = computed(() => appliedMpesaPayments.value.length)
+
+const appliedMpesaTotal = computed(() =>
+	round2(appliedMpesaPayments.value.reduce((sum, entry) => sum + (entry.amount || 0), 0)),
+)
+
+const appliedSmsEnablerPayments = computed(() =>
+	paymentEntries.value.filter((entry) => entry.is_sms_enabler && entry.sms_payment_name),
+)
+
+const appliedSmsEnablerPaymentCount = computed(() => appliedSmsEnablerPayments.value.length)
+
+const appliedSmsEnablerTotal = computed(() =>
+	round2(appliedSmsEnablerPayments.value.reduce((sum, entry) => sum + (entry.amount || 0), 0)),
+)
 
 const smsReconciliationMode = computed(
 	() => settingsStore.smsPaymentReconciliationMode || "Manual",

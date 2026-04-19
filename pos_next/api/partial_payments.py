@@ -809,15 +809,17 @@ def add_payment_to_partial_invoice(invoice_name: str, payments) -> Dict:
     if not payments:
         frappe.throw(_("At least one payment is required"))
 
-    # Permission check
-    if not frappe.has_permission("Sales Invoice", "write", invoice_name):
-        frappe.throw(_("You don't have permission to add payments to this invoice"))
-
     # Validate total payment amount doesn't exceed outstanding
     try:
         invoice = frappe.get_doc("Sales Invoice", invoice_name)
     except frappe.DoesNotExistError:
         frappe.throw(_("Invoice {0} does not exist").format(invoice_name))
+
+    # A cashier assigned to the invoice POS Profile may not have write access to
+    # an already submitted Sales Invoice, but still needs to collect payment.
+    has_profile_access = bool(invoice.pos_profile and _has_pos_profile_access(invoice.pos_profile))
+    if not frappe.has_permission("Sales Invoice", "write", invoice_name) and not has_profile_access:
+        frappe.throw(_("You don't have permission to add payments to this invoice"))
 
     total_payment_amount = sum(flt(p.get("amount", 0)) for p in payments)
     if total_payment_amount > flt(invoice.outstanding_amount) + AMOUNT_TOLERANCE:
