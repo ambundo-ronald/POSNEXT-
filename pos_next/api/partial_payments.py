@@ -372,6 +372,33 @@ def _is_party_account(account: Optional[str]) -> bool:
     return account_type in PARTY_ACCOUNT_TYPES
 
 
+def _get_pos_payment_method_account(pos_profile: Optional[str], mode_of_payment: str) -> Optional[str]:
+    if not pos_profile or not mode_of_payment:
+        return None
+
+    try:
+        columns = set(frappe.db.get_table_columns("POS Payment Method") or [])
+    except Exception:
+        columns = set()
+
+    for account_field in ("default_account", "account", "payment_account"):
+        if account_field not in columns:
+            continue
+
+        account = frappe.db.get_value(
+            "POS Payment Method",
+            {
+                "parent": pos_profile,
+                "mode_of_payment": mode_of_payment,
+            },
+            account_field,
+        )
+        if account:
+            return account
+
+    return None
+
+
 def _resolve_payment_account(
     mode_of_payment: str,
     company: str,
@@ -414,14 +441,7 @@ def _resolve_payment_account(
         )
 
     if invoice and invoice.get("pos_profile"):
-        profile_account = frappe.db.get_value(
-            "POS Payment Method",
-            {
-                "parent": invoice.pos_profile,
-                "mode_of_payment": mode_of_payment,
-            },
-            "default_account",
-        )
+        profile_account = _get_pos_payment_method_account(invoice.pos_profile, mode_of_payment)
         if profile_account:
             candidates.append(profile_account)
 

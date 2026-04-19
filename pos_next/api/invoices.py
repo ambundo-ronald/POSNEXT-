@@ -43,22 +43,31 @@ def get_payment_account(mode_of_payment, company):
         return {"account": account}
 
     # Try 2: POS Payment Method from POS Profile
-    account = frappe.db.sql(
-        """
-		SELECT ppm.default_account
-		FROM `tabPOS Payment Method` ppm
-		INNER JOIN `tabPOS Profile` pp ON ppm.parent = pp.name
-		WHERE ppm.mode_of_payment = %s
-		AND pp.company = %s
-		AND ppm.default_account IS NOT NULL
-		LIMIT 1
-	""",
-        (mode_of_payment, company),
-        as_dict=1,
-    )
+    try:
+        columns = set(frappe.db.get_table_columns("POS Payment Method") or [])
+    except Exception:
+        columns = set()
 
-    if account and account[0].default_account:
-        return {"account": account[0].default_account}
+    for account_field in ("default_account", "account", "payment_account"):
+        if account_field not in columns:
+            continue
+
+        account = frappe.db.sql(
+            f"""
+			SELECT ppm.`{account_field}` as account
+			FROM `tabPOS Payment Method` ppm
+			INNER JOIN `tabPOS Profile` pp ON ppm.parent = pp.name
+			WHERE ppm.mode_of_payment = %s
+			AND pp.company = %s
+			AND ppm.`{account_field}` IS NOT NULL
+			LIMIT 1
+		""",
+            (mode_of_payment, company),
+            as_dict=1,
+        )
+
+        if account and account[0].account:
+            return {"account": account[0].account}
 
     # Try 3: Company default cash account (for cash payments)
     if "cash" in mode_of_payment.lower():
