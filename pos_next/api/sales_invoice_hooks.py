@@ -20,6 +20,29 @@ def validate(doc, method=None):
 		method: Hook method name (unused)
 	"""
 	apply_tax_inclusive(doc)
+	normalize_pos_payments(doc)
+
+
+def before_submit(doc, method=None):
+	"""Normalize POS payments immediately before ledger posting."""
+	normalize_pos_payments(doc)
+
+
+def normalize_pos_payments(doc):
+	"""Ensure POS Sales Invoices carry paid/outstanding amounts from payments."""
+	if not getattr(doc, "is_pos", 0):
+		return
+
+	try:
+		from pos_next.api.invoices import normalize_pos_invoice_payments
+
+		normalize_pos_invoice_payments(doc)
+	except Exception:
+		frappe.log_error(
+			title="POS Payment Normalization Error",
+			message=f"Invoice: {doc.get('name') or 'New Sales Invoice'}\n{frappe.get_traceback()}",
+		)
+		raise
 
 
 def apply_tax_inclusive(doc):

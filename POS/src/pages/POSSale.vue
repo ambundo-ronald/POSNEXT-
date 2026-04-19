@@ -1622,6 +1622,7 @@ async function handlePaymentCompleted(paymentData) {
 				})
 			})
 		}
+		cartStore.rebuildIncrementalCache()
 
 		// Store sales team data if provided
 		if (paymentData.sales_team && Array.isArray(paymentData.sales_team)) {

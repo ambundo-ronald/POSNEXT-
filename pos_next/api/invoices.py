@@ -89,6 +89,56 @@ def get_payment_account(mode_of_payment, company):
     )
 
 
+def normalize_pos_invoice_payments(invoice_doc, company=None):
+    """Make POS payment rows deterministic before saving/submitting.
+
+    ERPNext derives paid/outstanding amounts from Sales Invoice Payment rows.
+    POS Next builds those rows in the frontend, so we normalize the account and
+    base amount server-side before ERPNext posts the invoice.
+    """
+    if not cint(invoice_doc.get("is_pos")):
+        return
+
+    company = company or invoice_doc.get("company")
+    conversion_rate = flt(invoice_doc.get("conversion_rate") or 1) or 1
+    total_paid = 0
+    total_base_paid = 0
+
+    for payment in invoice_doc.get("payments", []):
+        amount = flt(payment.get("amount") or 0)
+        if not amount and payment.get("base_amount"):
+            amount = flt(payment.get("base_amount")) / conversion_rate
+
+        payment.amount = amount
+        payment.base_amount = flt(amount * conversion_rate)
+
+        if payment.get("mode_of_payment") and company:
+            account_info = get_payment_account(payment.mode_of_payment, company)
+            payment.account = account_info.get("account")
+
+        total_paid += amount
+        total_base_paid += payment.base_amount
+
+    invoice_doc.paid_amount = flt(total_paid)
+    invoice_doc.base_paid_amount = flt(total_base_paid)
+
+    grand_total = flt(invoice_doc.get("rounded_total") or invoice_doc.get("grand_total") or 0)
+    base_grand_total = flt(
+        invoice_doc.get("base_rounded_total")
+        or invoice_doc.get("base_grand_total")
+        or (grand_total * conversion_rate)
+    )
+
+    if total_paid > grand_total:
+        invoice_doc.change_amount = flt(total_paid - grand_total)
+        invoice_doc.base_change_amount = flt(total_base_paid - base_grand_total)
+        invoice_doc.outstanding_amount = 0
+    else:
+        invoice_doc.change_amount = 0
+        invoice_doc.base_change_amount = 0
+        invoice_doc.outstanding_amount = flt(grand_total - total_paid)
+
+
 # ==========================================
 # Stock Validation Functions
 # ==========================================
@@ -470,16 +520,7 @@ def update_invoice(data):
         # Calculate totals and apply discounts (with rounding disabled)
         invoice_doc.calculate_taxes_and_totals()
 
-        # Set accounts for payment methods before saving
-        for payment in invoice_doc.payments:
-            if payment.mode_of_payment and not payment.get("account"):
-                try:
-                    account_info = get_payment_account(
-                        payment.mode_of_payment, invoice_doc.company
-                    )
-                    payment.account = account_info["account"]
-                except Exception:
-                    pass  # Will be handled during save
+        normalize_pos_invoice_payments(invoice_doc, invoice_doc.company)
 
         # For return invoices, ensure payments are negative
         if invoice_doc.is_return:
@@ -591,13 +632,7 @@ def submit_invoice(invoice=None, data=None):
             except Exception:
                 pass  # Branch is optional, continue without it
 
-        # Set accounts for all payment methods before saving
-        for payment in invoice_doc.payments:
-            if payment.mode_of_payment:
-                account_info = get_payment_account(
-                    payment.mode_of_payment, invoice_doc.company
-                )
-                payment.account = account_info["account"]
+        normalize_pos_invoice_payments(invoice_doc, invoice_doc.company)
 
         # Handle sales team (multiple sales persons)
         sales_team_data = invoice.get("sales_team") or data.get("sales_team")

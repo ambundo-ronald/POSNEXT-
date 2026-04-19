@@ -437,7 +437,7 @@
 														{{ __('Copy Webhook URL') }}
 													</button>
 													<p class="text-xs text-emerald-800">
-														{{ __('SMS Enabler can send sender/from and message/text fields by POST or query string.') }}
+														{{ __('SMS Enabler can send sender, text, scts, and tag fields by POST.') }}
 													</p>
 												</div>
 											</div>

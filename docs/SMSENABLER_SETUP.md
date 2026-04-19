@@ -52,7 +52,7 @@ SMS Enabler is a Kenyan payment integration that allows you to receive M-Pesa pa
 3. Add a new webhook with:
    - **URL**: Paste the webhook URL copied from POS Settings.
    - **Method**: POST
-   - **Authentication**: The copied URL already includes the token. You can also send the same token in the `X-SMS-Enabler-Token` header.
+   - **Authentication**: The copied URL already includes the token. If your SMS Enabler screen has a **Tag** field, paste the same token there instead of using a query token. You can also send the same token in the `X-SMS-Enabler-Token` header.
 
 4. **Test the webhook** (SMS Enabler will send a test request)
 5. Save configuration
@@ -60,6 +60,12 @@ SMS Enabler is a Kenyan payment integration that allows you to receive M-Pesa pa
 #### 2.2 Configure SMS Parsing
 
 SMS Enabler should forward SMS messages with the following information:
+- **sender**: SMS sender, for example `MPESA`
+- **text**: Raw SMS message body
+- **scts**: SMS timestamp, if available
+- **tag**: The webhook token copied from POS Settings, if you are not using the token in the URL
+
+The parser reads the raw SMS text and extracts:
 - **Payer Name**: Who sent the money
 - **Payer Phone**: Phone number of sender
 - **Amount**: Payment amount (KES/KSH)

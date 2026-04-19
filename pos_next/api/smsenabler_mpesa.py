@@ -286,6 +286,7 @@ def receive_sms(sender=None, message=None, received_at=None, source=None, compan
 	token = (
 		token
 		or frappe.form_dict.get("token")
+		or frappe.form_dict.get("tag")
 		or frappe.get_request_header("X-SMS-Enabler-Token")
 		or frappe.get_request_header("X-SMS-Token")
 	)
@@ -312,6 +313,7 @@ def receive_sms(sender=None, message=None, received_at=None, source=None, compan
 
 	message = message or frappe.form_dict.get("text") or frappe.form_dict.get("message")
 	sender = sender or frappe.form_dict.get("sender") or frappe.form_dict.get("from")
+	received_at = received_at or frappe.form_dict.get("scts")
 	if not message:
 		frappe.throw(_("SMS message is required"))
 
