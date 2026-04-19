@@ -388,23 +388,32 @@ def get_pos_invoices(pos_opening_shift, doctype=None):
 
 @frappe.whitelist()
 def get_payments_entries(pos_opening_shift):
-    return frappe.get_all(
-        "Payment Entry",
-        filters={
-            "docstatus": 1,
-            "reference_no": pos_opening_shift,
-            "payment_type": "Receive",
-        },
-        fields=[
-            "name",
-            "mode_of_payment",
-            "paid_amount",
-            "base_paid_amount",
-            "target_exchange_rate",
-            "reference_no",
-            "posting_date",
-            "party",
-        ],
+    return frappe.db.sql(
+        """
+        SELECT DISTINCT
+            pe.name,
+            pe.mode_of_payment,
+            pe.paid_amount,
+            pe.base_paid_amount,
+            pe.target_exchange_rate,
+            pe.reference_no,
+            pe.posting_date,
+            pe.party
+        FROM `tabPayment Entry` pe
+        LEFT JOIN `tabPayment Entry Reference` per
+            ON per.parent = pe.name
+            AND per.reference_doctype = 'Sales Invoice'
+        LEFT JOIN `tabSales Invoice` si
+            ON si.name = per.reference_name
+        WHERE pe.docstatus = 1
+            AND pe.payment_type = 'Receive'
+            AND (
+                pe.reference_no = %(pos_opening_shift)s
+                OR si.posa_pos_opening_shift = %(pos_opening_shift)s
+            )
+        """,
+        {"pos_opening_shift": pos_opening_shift},
+        as_dict=True,
     )
 
 

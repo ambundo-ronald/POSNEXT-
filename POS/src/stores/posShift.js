@@ -19,9 +19,15 @@ export const usePOSShiftStore = defineStore("posShift", () => {
 	const profileWarehouse = computed(() => currentProfile.value?.warehouse)
 	const profileCompany = computed(() => currentProfile.value?.company)
 	const profileCustomer = computed(() => currentProfile.value?.customer)
-	const autoPrintEnabled = computed(
-		() => currentProfile.value?.print_receipt_on_order_complete,
-	)
+	const autoPrintEnabled = computed(() => {
+		const profile = currentProfile.value || {}
+		const value =
+			profile.print_receipt_on_order_complete ??
+			profile.auto_print ??
+			profile.posa_auto_print
+
+		return value === true || value === 1 || value === "1"
+	})
 
 	// Actions
 	function updateShiftDuration() {

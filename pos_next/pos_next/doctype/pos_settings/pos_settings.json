@@ -43,6 +43,8 @@
   "section_break_pricing",
   "decimal_precision",
   "tax_inclusive",
+  "retail_price_list",
+  "wholesale_price_list",
   "section_break_customer",
   "allow_customer_purchase_order",
   "allow_duplicate_customer_names",
@@ -331,6 +333,20 @@
    "fieldtype": "Check",
    "label": "Tax Inclusive",
    "description": "Automatically set taxes as included in item prices. When enabled, displayed prices include tax amounts."
+  },
+  {
+   "fieldname": "retail_price_list",
+   "fieldtype": "Link",
+   "label": "Retail Price List",
+   "options": "Price List",
+   "description": "Price list used when cashiers select Retail Price in POS. If empty, the POS Profile selling price list is used."
+  },
+  {
+   "fieldname": "wholesale_price_list",
+   "fieldtype": "Link",
+   "label": "Wholesale Price List",
+   "options": "Price List",
+   "description": "Price list used when cashiers select Wholesale Price in POS."
   },
   {
    "collapsible": 1,

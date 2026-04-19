@@ -387,15 +387,19 @@ def update_invoice(data):
             if pos_profile_doc.currency and not invoice_doc.get("currency"):
                 invoice_doc.currency = pos_profile_doc.currency
 
-            effective_price_list = resolve_profile_selling_price_list(
-                pos_profile_doc,
-                customer=invoice_doc.get("customer"),
-                customer_group=invoice_doc.get("customer_group"),
-                warehouse=(
-                    invoice_doc.get("items", [{}])[0].get("warehouse")
-                    if invoice_doc.get("items")
-                    else pos_profile_doc.warehouse
-                ),
+            effective_price_list = (
+                invoice_doc.get("selling_price_list")
+                or data.get("price_list")
+                or resolve_profile_selling_price_list(
+                    pos_profile_doc,
+                    customer=invoice_doc.get("customer"),
+                    customer_group=invoice_doc.get("customer_group"),
+                    warehouse=(
+                        invoice_doc.get("items", [{}])[0].get("warehouse")
+                        if invoice_doc.get("items")
+                        else pos_profile_doc.warehouse
+                    ),
+                )
             )
             if effective_price_list:
                 invoice_doc.selling_price_list = effective_price_list

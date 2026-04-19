@@ -430,7 +430,7 @@
 								<input
 									v-model="mpesaSearch"
 									type="text"
-									:placeholder="__('Search C2B name, phone, transaction ID (min 3 chars)')"
+									:placeholder="__('Search C2B name, phone, transaction ID')"
 									class="w-full rounded-lg border border-green-200 px-3 py-2 ps-8 text-xs focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
 									@input="handleMpesaSearchInput"
 								/>
@@ -439,7 +439,7 @@
 								</svg>
 							</div>
 							<div class="rounded-lg bg-green-100 px-3 py-2 text-xs font-semibold text-green-800">
-								{{ __('{0} pending', [mpesaPendingCount]) }}
+								{{ __('Latest pending payments') }}
 							</div>
 						</div>
 
@@ -450,12 +450,6 @@
 							</div>
 							<div v-else-if="mpesaPendingCount === 0" class="p-4 text-center text-xs text-gray-500">
 								{{ __('No pending M-Pesa payments found') }}
-							</div>
-							<div
-								v-else-if="mpesaSearch.trim().length < 3"
-								class="p-4 text-center text-xs text-gray-500"
-							>
-								{{ __('Enter at least 3 characters to search pending payments') }}
 							</div>
 							<div v-else-if="mpesaPayments.length === 0" class="p-4 text-center text-xs text-gray-500">
 								{{ __('No matching M-Pesa payments') }}
@@ -562,7 +556,7 @@
 								<input
 									v-model="smsEnablerSearch"
 									type="text"
-									:placeholder="__('Search SMS payer, phone, transaction ID, account (min 3 chars)')"
+									:placeholder="__('Search SMS payer, phone, transaction ID, account')"
 									class="w-full rounded-lg border border-emerald-200 px-3 py-2 ps-8 text-xs focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
 									@input="handleSmsEnablerSearchInput"
 								/>
@@ -571,7 +565,7 @@
 								</svg>
 							</div>
 							<div class="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800">
-								{{ __('{0} pending', [smsEnablerPendingCount]) }}
+								{{ __('Latest pending SMS payments') }}
 							</div>
 						</div>
 
@@ -582,12 +576,6 @@
 							</div>
 							<div v-else-if="smsEnablerPendingCount === 0" class="p-4 text-center text-xs text-gray-500">
 								{{ __('No pending SMS payments found') }}
-							</div>
-							<div
-								v-else-if="smsEnablerSearch.trim().length < 3 && !(smsReconciliationMode !== 'Manual' && smsEnablerPayments.length > 0)"
-								class="p-4 text-center text-xs text-gray-500"
-							>
-								{{ __('Enter at least 3 characters to search pending SMS payments') }}
 							</div>
 							<div v-else-if="smsEnablerPayments.length === 0" class="p-4 text-center text-xs text-gray-500">
 								{{ __('No matching SMS payments') }}
@@ -1364,10 +1352,6 @@ function handleMpesaSearchInput() {
 	}
 
 	const search = mpesaSearch.value.trim()
-	if (search.length > 0 && search.length < 3) {
-		mpesaPayments.value = []
-		return
-	}
 
 	mpesaSearchTimeout = setTimeout(() => {
 		loadMpesaPayments(search)
@@ -1617,10 +1601,6 @@ function handleSmsEnablerSearchInput() {
 	}
 
 	const search = smsEnablerSearch.value.trim()
-	if (search.length > 0 && search.length < 3) {
-		smsEnablerPayments.value = []
-		return
-	}
 
 	smsEnablerSearchTimeout = setTimeout(() => {
 		loadSmsEnablerPayments(search, {

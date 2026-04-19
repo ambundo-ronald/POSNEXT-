@@ -170,7 +170,10 @@
 						:customer="cartStore.customer"
 						:cart-items="cartStore.invoiceItems"
 						:currency="shiftStore.profileCurrency"
+						:retail-price-list="activeRetailPriceList"
+						:wholesale-price-list="activeWholesalePriceList"
 						@item-selected="handleItemSelected"
+						@price-list-changed="handlePriceListChanged"
 					/>
 				</div>
 			</keep-alive>
@@ -380,6 +383,8 @@
 			:item="cartStore.pendingItem"
 			:mode="cartStore.selectionMode"
 			:pos-profile="shiftStore.profileName"
+			:customer="cartStore.customer"
+			:price-list="itemStore.selectedPriceList"
 			:currency="shiftStore.profileCurrency"
 			@option-selected="handleOptionSelected"
 		/>
@@ -863,6 +868,14 @@ const profileWarehouses = computed(() => {
 		]
 	}
 	return []
+})
+
+const activeRetailPriceList = computed(() => {
+	return posSettingsStore.retailPriceList || shiftStore.currentProfile?.selling_price_list || ""
+})
+
+const activeWholesalePriceList = computed(() => {
+	return posSettingsStore.wholesalePriceList || ""
 })
 
 // Resize state
@@ -1426,7 +1439,7 @@ function handleItemSelected(item, autoAdd = false) {
 }
 
 async function handleEditItem(updatedItem) {
-	await cartStore.updateItemDetails(updatedItem.item_code, updatedItem)
+	await cartStore.updateItemDetails(updatedItem.item_code, updatedItem, itemStore.selectedPriceList)
 }
 
 function handleAdditionalDiscountUpdate(discountAmount) {
@@ -1474,7 +1487,7 @@ async function applyConditionalPriceList() {
 			}
 
 			// Reprice all items with the new price list
-			await cartStore.repriceCartItems(shiftStore.currentProfile)
+			await cartStore.repriceCartItems(shiftStore.currentProfile, mappedPriceList)
 
 			showSuccess(
 				__('Price list updated to {0} based on {1} warehouse and {2} customer group',
@@ -1493,15 +1506,10 @@ async function applyConditionalPriceList() {
 async function handleCustomerSelected(selectedCustomer) {
 	if (selectedCustomer) {
 		cartStore.setCustomer(selectedCustomer)
-		await cartStore.repriceCartItems(shiftStore.currentProfile)
+		await cartStore.repriceCartItems(shiftStore.currentProfile, itemStore.selectedPriceList)
 		await cartStore.reapplyOffer(shiftStore.currentProfile)
 		uiStore.showCustomerDialog = false
 		showSuccess(__('{0} selected', [selectedCustomer.customer_name]))
-
-		// Apply conditional price list if mappings exist
-		if (hasPriceListMappings.value) {
-			await applyConditionalPriceList()
-		}
 
 		if (pendingPaymentAfterCustomer.value) {
 			pendingPaymentAfterCustomer.value = false
@@ -1509,9 +1517,15 @@ async function handleCustomerSelected(selectedCustomer) {
 		}
 	} else {
 		cartStore.setCustomer(null)
-		await cartStore.repriceCartItems(shiftStore.currentProfile)
+		await cartStore.repriceCartItems(shiftStore.currentProfile, itemStore.selectedPriceList)
 		await cartStore.reapplyOffer(shiftStore.currentProfile)
 	}
+}
+
+async function handlePriceListChanged(priceList) {
+	cartStore.setSellingPriceList(priceList)
+	await cartStore.repriceCartItems(shiftStore.currentProfile, priceList)
+	await cartStore.reapplyOffer(shiftStore.currentProfile)
 }
 
 function handleCreateCustomer(searchValue) {
@@ -1600,6 +1614,9 @@ async function requestMpesaStkPayment({ phone_number, amount }) {
 async function handlePaymentCompleted(paymentData) {
 	try {
 		const customerValue = cartStore.customer?.name || cartStore.customer
+		const paymentEntries = Array.isArray(paymentData.payments)
+			? paymentData.payments
+			: []
 		const mpesaPayments = Array.isArray(paymentData.mpesa_payments)
 			? paymentData.mpesa_payments
 			: []
@@ -1614,8 +1631,8 @@ async function handlePaymentCompleted(paymentData) {
 		}
 
 		cartStore.payments = []
-		if (paymentData.payments && Array.isArray(paymentData.payments)) {
-			paymentData.payments.forEach((p) => {
+		if (offlineStore.isOffline && paymentEntries.length) {
+			paymentEntries.forEach((p) => {
 				cartStore.payments.push({
 					mode_of_payment: p.mode_of_payment,
 					amount: p.amount,
@@ -1671,6 +1688,23 @@ async function handlePaymentCompleted(paymentData) {
 				const invoiceName = result.name || result.message?.name || __('Unknown')
 				const invoiceTotal = result.grand_total || result.total || 0
 				const paidAmount = paymentData.paid_amount || invoiceTotal
+				const bookkeepingPayments = buildBookkeepingPayments(paymentData)
+
+				if (bookkeepingPayments.length > 0 && invoiceName !== __('Unknown')) {
+					try {
+						await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {
+							invoice_name: invoiceName,
+							payments: bookkeepingPayments,
+						})
+					} catch (paymentEntryError) {
+						log.error("Payment Entry creation error:", paymentEntryError)
+						showWarning(
+							paymentEntryError.message ||
+								__("Invoice was created, but payment entries could not be created"),
+						)
+						throw paymentEntryError
+					}
+				}
 
 				if (mpesaPayments.length > 0 && invoiceName !== __('Unknown')) {
 					try {
@@ -1719,7 +1753,7 @@ async function handlePaymentCompleted(paymentData) {
 				// Refresh stock - Direct API (50-200ms), no Socket.IO lag!
 				await stockStore.refresh(soldItemCodes, shiftStore.profileWarehouse)
 
-				if (shiftStore.autoPrintEnabled) {
+				if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
 					try {
 						await handlePrintInvoice({ name: invoiceName })
 						showSuccess(__('Invoice {0} created and sent to printer', [invoiceName]))
@@ -1753,6 +1787,47 @@ async function handlePaymentCompleted(paymentData) {
 			showWarning(errorContext.message)
 		}
 	}
+}
+
+function buildBookkeepingPayments(paymentData) {
+	const entries = Array.isArray(paymentData?.payments)
+		? paymentData.payments
+		: []
+	let changeToApply = Number.parseFloat(paymentData?.change_amount || 0) || 0
+
+	const payments = entries
+		.filter((entry) => !entry.is_customer_credit)
+		.map((entry) => ({
+			...entry,
+			amount: Number.parseFloat(entry.amount || 0) || 0,
+		}))
+
+	for (const payment of payments) {
+		if (changeToApply <= 0) break
+
+		const isCashPayment =
+			String(payment.type || "").toLowerCase() === "cash" ||
+			String(payment.mode_of_payment || "").toLowerCase().includes("cash")
+
+		if (!isCashPayment || payment.amount <= 0) continue
+
+		const changeApplied = Math.min(payment.amount, changeToApply)
+		payment.amount = Number.parseFloat((payment.amount - changeApplied).toFixed(2))
+		changeToApply = Number.parseFloat((changeToApply - changeApplied).toFixed(2))
+	}
+
+	return payments
+		.filter((entry) => entry.amount > 0)
+		.map((entry) => ({
+			mode_of_payment: entry.mode_of_payment,
+			amount: entry.amount,
+			account: entry.account,
+			reference_no:
+				entry.reference_no ||
+				entry.sms_transaction_id ||
+				entry.mpesa_transaction_id ||
+				null,
+		}))
 }
 
 function handleClearCart() {
@@ -1801,6 +1876,7 @@ async function handleOptionSelected(option) {
 				pos_profile: cartStore.posProfile,
 				customer: cartStore.customer?.name || cartStore.customer,
 				customer_group: cartStore.customer?.customer_group,
+				price_list: itemStore.selectedPriceList,
 				qty: qty,
 				uom: option.uom,
 			})

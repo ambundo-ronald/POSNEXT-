@@ -204,6 +204,10 @@ const props = defineProps({
 		type: [Object, String],
 		default: null,
 	},
+	priceList: {
+		type: String,
+		default: "",
+	},
 	currency: {
 		type: String,
 		default: "USD",
@@ -318,6 +322,7 @@ const variantsResource = createResource({
 			pos_profile: props.posProfile,
 			customer: props.customer?.name || props.customer || null,
 			customer_group: props.customer?.customer_group || null,
+			price_list: props.priceList || null,
 		}
 	},
 	auto: false,

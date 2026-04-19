@@ -18,6 +18,7 @@ export function useInvoice() {
 	const couponCode = ref(null)
 	const taxRules = ref([]) // Tax rules from POS Profile
 	const taxInclusive = ref(false) // Tax inclusive setting from POS Settings
+	const selectedPriceList = ref(null)
 
 	// Performance: Incrementally maintained aggregates (updated on add/remove/change)
 	// This avoids O(n) array reductions on every reactive change
@@ -656,6 +657,8 @@ export function useInvoice() {
 			doctype: "Sales Invoice",
 			name: draftInvoiceName.value || undefined,
 			pos_profile: posProfile.value,
+			selling_price_list: selectedPriceList.value || undefined,
+			price_list: selectedPriceList.value || undefined,
 			posa_pos_opening_shift: posOpeningShift.value,
 			customer: customer.value?.name || customer.value,
 			items: rawItems.map((item) => ({
@@ -716,6 +719,8 @@ export function useInvoice() {
 				doctype: "Sales Invoice",
 				name: draftInvoiceName.value || undefined,
 				pos_profile: posProfile.value,
+				selling_price_list: selectedPriceList.value || undefined,
+				price_list: selectedPriceList.value || undefined,
 				posa_pos_opening_shift: posOpeningShift.value,
 				customer: customer.value?.name || customer.value,
 				items: rawItems.map((item) => ({
@@ -990,6 +995,10 @@ export function useInvoice() {
 		rebuildIncrementalCache()
 	}
 
+	function setSellingPriceList(priceList) {
+		selectedPriceList.value = priceList || null
+	}
+
 	return {
 		// State
 		invoiceItems,
@@ -1003,6 +1012,7 @@ export function useInvoice() {
 		couponCode,
 		taxRules,
 		taxInclusive,
+		selectedPriceList,
 
 		// Computed
 		subtotal,
@@ -1033,6 +1043,7 @@ export function useInvoice() {
 		setDefaultCustomer,
 		loadTaxRules,
 		setTaxInclusive,
+		setSellingPriceList,
 		recalculateItem,
 		rebuildIncrementalCache,
 

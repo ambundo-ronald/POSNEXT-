@@ -120,8 +120,8 @@ def _get_customer_match_data(customer):
 
 def _parse_amount(message):
 	patterns = [
-		r"(?:KES|KSH|Ksh|Kes)\s*([0-9][0-9,]*(?:\.\d{1,2})?)",
-		r"([0-9][0-9,]*(?:\.\d{1,2})?)\s*(?:KES|KSH|Ksh|Kes)",
+		r"\b(?:KES|KSH)\.?\s*([0-9][0-9,]*(?:\.\d{1,2})?)",
+		r"\b([0-9][0-9,]*(?:\.\d{1,2})?)\s*(?:KES|KSH)\.?\b",
 	]
 	for pattern in patterns:
 		match = re.search(pattern, message or "", re.IGNORECASE)
@@ -132,7 +132,8 @@ def _parse_amount(message):
 
 def _parse_transaction_id(message):
 	patterns = [
-		r"\b(?:transaction|trans|txn|tx|ref|reference)\s*(?:id|no|number|code)?[:\s#-]*([A-Z0-9]{6,})",
+		r"\b(?:M[\s-]?PESA|MPESA)\s+Ref\.?\s*[:#-]?\s*([A-Z0-9]{6,})",
+		r"\b(?:transaction|trans|txn|tx|ref|reference)\s*(?:id|no|number|code)?[:.\s#-]*([A-Z0-9]{6,})",
 		r"\b([A-Z0-9]{8,})\b",
 	]
 	for pattern in patterns:
@@ -144,7 +145,8 @@ def _parse_transaction_id(message):
 
 def _parse_account_reference(message):
 	patterns = [
-		r"\b(?:account|acc|a/c|reference|ref)\s*(?:no|number)?[:\s#-]*([A-Z0-9\-_/]{3,})",
+		r"\b(?:A/C|account|acc)\s+(?:ref\.?\s*)?(?:no|number)?\.?[:\s#-]*([A-Z0-9\-_/]{3,})",
+		r"\bfor\s+([A-Z0-9\-_/]{3,})\s+has\s+been\s+received\b",
 		r"\b(?:for|to)\s+account\s+([A-Z0-9\-_/]{3,})",
 	]
 	for pattern in patterns:
@@ -155,14 +157,26 @@ def _parse_account_reference(message):
 
 
 def _parse_payer_phone(message):
-	match = re.search(r"(?:254|0)7\d{8}", message or "")
-	return match.group(0) if match else None
+	patterns = [
+		r"(?:254|0)7\d{8}",
+		r"\b0?7[0-9*]{2,7}\d{2,3}\b",
+	]
+	for pattern in patterns:
+		match = re.search(pattern, message or "")
+		if match:
+			return match.group(0)
+	return None
 
 
 def _parse_payer_name(message):
-	match = re.search(r"\bfrom\s+([A-Z][A-Z\s.'-]{2,40})(?:\s+\d|\s+on|\s+for|\.|,)", message or "", re.IGNORECASE)
-	if match:
-		return " ".join(match.group(1).split()).title()
+	patterns = [
+		r"\bfrom\s+([A-Z][A-Z\s.'-]{2,80}?)(?:\s+\d|\s+on|\s+for|\.|,)",
+		r"\bby\s+([A-Z][A-Z\s.'-]{2,80}?)(?:\s+phone\b|\s+on\b|\.|,)",
+	]
+	for pattern in patterns:
+		match = re.search(pattern, message or "", re.IGNORECASE)
+		if match:
+			return " ".join(match.group(1).split()).title()
 	return None
 
 
@@ -255,6 +269,36 @@ def _parse_payment_names(payments):
 	return names
 
 
+def _find_payment_entry_for_sms(invoice, transaction_id=None, amount=None):
+	if not invoice:
+		return None
+
+	conditions = ["pe.docstatus = 1", "pe.payment_type = 'Receive'", "per.reference_name = %(invoice)s"]
+	params = {"invoice": invoice}
+
+	if transaction_id:
+		conditions.append("pe.reference_no = %(transaction_id)s")
+		params["transaction_id"] = transaction_id
+
+	if amount:
+		conditions.append("ABS(pe.paid_amount - %(amount)s) < 0.01")
+		params["amount"] = flt(amount)
+
+	result = frappe.db.sql(
+		f"""
+		SELECT pe.name
+		FROM `tabPayment Entry` pe
+		INNER JOIN `tabPayment Entry Reference` per ON per.parent = pe.name
+		WHERE {" AND ".join(conditions)}
+		ORDER BY pe.creation DESC
+		LIMIT 1
+		""",
+		params,
+		as_dict=True,
+	)
+	return result[0].name if result else None
+
+
 @frappe.whitelist()
 def check_sms_enabler_available(company=None, pos_profile=None):
 	if pos_profile and not company:
@@ -338,6 +382,63 @@ def receive_sms(sender=None, message=None, received_at=None, source=None, compan
 
 
 @frappe.whitelist()
+def reparse_sms_payment(name):
+	"""Reparse a saved SMS Enabler payment register record from raw_message."""
+	if not name:
+		frappe.throw(_("SMS payment record is required"))
+
+	doc = frappe.get_doc(SMS_REGISTER_DOCTYPE, name)
+	if not doc.has_permission("write"):
+		frappe.throw(_("You don't have permission to reparse this SMS payment"), frappe.PermissionError)
+
+	if doc.status == "Consumed" or doc.payment_entry:
+		frappe.throw(_("Consumed SMS payments cannot be reparsed"))
+
+	if not doc.raw_message:
+		frappe.throw(_("Raw SMS message is required"))
+
+	parsed = parse_sms_message(
+		doc.raw_message,
+		sender=doc.sender,
+		source=doc.source,
+	)
+
+	for field in (
+		"source",
+		"transaction_id",
+		"amount",
+		"payer_name",
+		"payer_phone",
+		"account_reference",
+		"parse_status",
+		"parse_error",
+	):
+		doc.set(field, parsed.get(field))
+
+	if parsed.get("parse_status") == "Parsed":
+		if doc.status in ("Failed Parse", "Duplicate") or not doc.sales_invoice:
+			doc.status = "Pending"
+	else:
+		if doc.status != "Matched":
+			doc.status = "Failed Parse"
+
+	doc.save()
+
+	return {
+		"success": True,
+		"name": doc.name,
+		"status": doc.status,
+		"parse_status": doc.parse_status,
+		"parse_error": doc.parse_error,
+		"transaction_id": doc.transaction_id,
+		"amount": doc.amount,
+		"payer_name": doc.payer_name,
+		"payer_phone": doc.payer_phone,
+		"account_reference": doc.account_reference,
+	}
+
+
+@frappe.whitelist()
 def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, customer=None):
 	search = (search or "").strip()
 	amount = flt(amount or 0)
@@ -349,8 +450,6 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 		filters["company"] = ["in", [company, "", None]]
 
 	total_count = frappe.db.count(SMS_REGISTER_DOCTYPE, filters)
-	if len(search) < 3 and amount <= 0:
-		return {"count": total_count, "payments": []}
 
 	payments = frappe.get_all(
 		SMS_REGISTER_DOCTYPE,
@@ -385,7 +484,7 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 			payment.get("account_reference"),
 			payment.get("raw_message"),
 		]
-		search_match = len(search) >= 3 and any(search_lower in str(value or "").lower() for value in values)
+		search_match = not search or any(search_lower in str(value or "").lower() for value in values)
 		scored_payment = _score_payment_match(payment, amount=amount, customer_data=customer_data)
 		if search_match or (amount > 0 and scored_payment.get("match_score", 0) > 0):
 			matches.append(scored_payment)
@@ -425,6 +524,11 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 		payment.company = company
 		payment.sales_invoice = invoice
 		payment.mode_of_payment = payment.mode_of_payment or mode_of_payment
+		payment.payment_entry = payment.payment_entry or _find_payment_entry_for_sms(
+			invoice,
+			transaction_id=payment.transaction_id,
+			amount=payment.amount,
+		)
 		payment.status = "Consumed"
 		payment.flags.ignore_permissions = True
 		payment.save()
@@ -435,6 +539,7 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 				"amount": flt(payment.amount),
 				"mode_of_payment": payment.mode_of_payment,
 				"sales_invoice": invoice,
+				"payment_entry": payment.payment_entry,
 			}
 		)
 

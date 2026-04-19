@@ -31,6 +31,23 @@
 					<span>{{ __(group.item_group) }}</span>
 				</button>
 			</div>
+			<div class="mt-2 flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
+				<button
+					v-for="mode in priceModes"
+					:key="mode.value"
+					@click="setPriceMode(mode.value)"
+					:disabled="mode.disabled"
+					:class="[
+						'flex-1 rounded-md px-3 py-1.5 text-[10px] sm:text-xs font-semibold transition-[background-color,color,box-shadow] duration-75',
+						activePriceMode === mode.value
+							? 'bg-white text-blue-700 shadow-sm'
+							: 'text-gray-600 hover:bg-white/70',
+						mode.disabled ? 'cursor-not-allowed opacity-50' : ''
+					]"
+				>
+					{{ mode.label }}
+				</button>
+			</div>
 		</div>
 
 		<!-- Cache Sync Indicator -->
@@ -735,9 +752,17 @@ const props = defineProps({
 		type: String,
 		default: "USD",
 	},
+	retailPriceList: {
+		type: String,
+		default: "",
+	},
+	wholesalePriceList: {
+		type: String,
+		default: "",
+	},
 })
 
-const emit = defineEmits(["item-selected"])
+const emit = defineEmits(["item-selected", "price-list-changed"])
 
 // Use composables
 const { getStockStatus } = useStock()
@@ -774,6 +799,7 @@ const autoSearchTimer = ref(null) // Timer for auto-search when typing stops
 const lastAutoSwitchCount = ref(0)
 const lastFilterSignature = ref("")
 const showSortDropdown = ref(false) // Sort dropdown visibility
+const activePriceMode = ref("retail")
 
 // Warehouse availability dialog state
 const showWarehouseDialog = ref(false)
@@ -859,6 +885,36 @@ const searchMode = computed(() => {
 
 const searchPlaceholder = computed(() => SEARCH_PLACEHOLDERS[searchMode.value])
 
+const activePriceList = computed(() => {
+	return activePriceMode.value === "wholesale"
+		? props.wholesalePriceList || null
+		: props.retailPriceList || null
+})
+
+const priceModes = computed(() => [
+	{
+		value: "retail",
+		label: props.retailPriceList
+			? __("Retail Price")
+			: __("Retail Price"),
+		disabled: false,
+	},
+	{
+		value: "wholesale",
+		label: __("Wholesale Price"),
+		disabled: !props.wholesalePriceList,
+	},
+])
+
+function setPriceMode(mode) {
+	if (mode === "wholesale" && !props.wholesalePriceList) {
+		showWarning(__("Set a wholesale price list in POS Settings first"))
+		return
+	}
+
+	activePriceMode.value = mode
+}
+
 // Watch for cart items and pos profile changes (optimized - uses length + hash instead of deep watch)
 // Tracks: length, item_code, quantity, and amount to detect all cart changes including array replacements
 watch(
@@ -884,6 +940,15 @@ watch(
 	() => props.customer,
 	(newCustomer) => {
 		itemStore.setCustomer(newCustomer)
+	},
+	{ immediate: true },
+)
+
+watch(
+	activePriceList,
+	async (priceList) => {
+		await itemStore.setPriceList(priceList)
+		emit("price-list-changed", priceList)
 	},
 	{ immediate: true },
 )

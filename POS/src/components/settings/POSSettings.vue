@@ -300,6 +300,40 @@
 												:label="__('Tax Inclusive')"
 												:description="__('When enabled, displayed prices include tax. When disabled, tax is calculated separately. Changes apply immediately to your cart when you save.')"
 											/>
+											<div class="grid gap-3 md:grid-cols-2">
+												<label class="block">
+													<span class="mb-1 block text-xs font-medium text-gray-700">
+														{{ __('Retail Price List') }}
+													</span>
+													<Autocomplete
+														v-model="settings.retail_price_list"
+														:options="priceListOptions"
+														:loading="loadingPriceLists"
+														@search="searchPriceLists"
+														@select="(option) => settings.retail_price_list = option.value"
+														:allow-custom-value="false"
+													/>
+													<span class="mt-1 block text-[11px] text-gray-500">
+														{{ __('Used by the Retail button. If empty, POS Profile price list is used.') }}
+													</span>
+												</label>
+												<label class="block">
+													<span class="mb-1 block text-xs font-medium text-gray-700">
+														{{ __('Wholesale Price List') }}
+													</span>
+													<Autocomplete
+														v-model="settings.wholesale_price_list"
+														:options="priceListOptions"
+														:loading="loadingPriceLists"
+														@search="searchPriceLists"
+														@select="(option) => settings.wholesale_price_list = option.value"
+														:allow-custom-value="false"
+													/>
+													<span class="mt-1 block text-[11px] text-gray-500">
+														{{ __('Used by the Wholesale button on the item screen.') }}
+													</span>
+												</label>
+											</div>
 											<NumberField
 												v-model="settings.max_discount_allowed"
 												:label="__('Max Discount (%)')"
@@ -502,7 +536,7 @@ import NumberField from "@/components/settings/NumberField.vue"
 import SelectField from "@/components/settings/SelectField.vue"
 import PriceListMapping from "@/components/settings/PriceListMapping.vue"
 import { useToast } from "@/composables/useToast"
-import { Button, call, createResource } from "frappe-ui"
+import { Autocomplete, Button, call, createResource } from "frappe-ui"
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 import {
 	getSectionHeaderClasses,
@@ -556,8 +590,12 @@ const settings = ref({
 	silent_print: 0,
 	allow_negative_stock: 0,
 	tax_inclusive: 0,
+	retail_price_list: "",
+	wholesale_price_list: "",
 })
 const regeneratingSmsToken = ref(false)
+const priceListOptions = ref([])
+const loadingPriceLists = ref(false)
 
 // Stock Sync Settings (localStorage persisted)
 const stockSyncEnabled = ref(false)
@@ -730,6 +768,31 @@ async function regenerateSmsEnablerToken() {
 		showError(error.message || __("Could not regenerate SMS Enabler token"))
 	} finally {
 		regeneratingSmsToken.value = false
+	}
+}
+
+async function searchPriceLists(query = "") {
+	loadingPriceLists.value = true
+	try {
+		const result = await call("frappe.client.get_list", {
+			doctype: "Price List",
+			fields: ["name"],
+			filters: {
+				name: ["like", `%${query || ""}%`],
+				enabled: 1,
+			},
+			limit_page_length: 20,
+		})
+
+		priceListOptions.value = (result?.message || result || []).map((row) => ({
+			label: row.name,
+			value: row.name,
+		}))
+	} catch (error) {
+		log.error("Failed to search price lists:", error)
+		priceListOptions.value = []
+	} finally {
+		loadingPriceLists.value = false
 	}
 }
 

@@ -274,8 +274,8 @@ def check_mpesa_available(company=None, pos_profile=None):
 def get_mpesa_payments(company=None, pos_profile=None, search=None, amount=None, customer=None):
 	"""Get pending draft M-Pesa C2B payments for the company.
 
-	Like the source POS_Mpesa app, payment rows are returned only after a
-	3-character search, but the pending count is always returned.
+	Returns the latest pending rows by default, and filters them when a search
+	value is provided.
 	"""
 	company = _resolve_company(company=company, pos_profile=pos_profile)
 	search = (search or "").strip()
@@ -294,9 +294,6 @@ def get_mpesa_payments(company=None, pos_profile=None, search=None, amount=None,
 	}
 
 	total_count = frappe.db.count(MPESA_REGISTER_DOCTYPE, base_filters)
-
-	if len(search) < 3 and amount <= 0:
-		return {"count": total_count, "payments": []}
 
 	search_lower = search.lower()
 	all_payments = frappe.get_all(
@@ -326,7 +323,7 @@ def get_mpesa_payments(company=None, pos_profile=None, search=None, amount=None,
 			payment.get("msisdn"),
 			payment.get("name"),
 		]
-		search_match = len(search) >= 3 and any(search_lower in str(value or "").lower() for value in values)
+		search_match = not search or any(search_lower in str(value or "").lower() for value in values)
 		scored_payment = _score_payment_match(payment, amount=amount, customer_data=customer_data)
 
 		if search_match or (amount > 0 and scored_payment.get("match_score", 0) > 0):

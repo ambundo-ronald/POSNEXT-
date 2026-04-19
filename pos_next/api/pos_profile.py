@@ -89,6 +89,8 @@ def get_pos_settings(pos_profile):
 				"allow_partial_payment",
 				"sms_payment_reconciliation_mode",
 				"decimal_precision",
+				"retail_price_list",
+				"wholesale_price_list",
 				"allow_negative_stock",
 				"enable_sales_persons"
 			],
@@ -110,6 +112,8 @@ def get_pos_settings(pos_profile):
 				"allow_partial_payment": 0,
 				"sms_payment_reconciliation_mode": "Manual",
 				"decimal_precision": "2",
+				"retail_price_list": "",
+				"wholesale_price_list": "",
 				"allow_negative_stock": 0,
 				"enable_sales_persons": "Disabled"
 			}

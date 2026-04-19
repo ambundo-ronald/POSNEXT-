@@ -26,6 +26,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	const itemGroups = ref([])
 	const profileItemGroups = ref([]) // Item groups from POS Profile filter
 	const selectedCustomer = ref(null)
+	const selectedPriceList = ref(null)
 	const loading = ref(false)
 	const loadingMore = ref(false)
 	const searching = ref(false) // Separate loading state for search
@@ -69,6 +70,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		return {
 			customer: rawCustomer?.name || rawCustomer || null,
 			customer_group: rawCustomer?.customer_group || null,
+			price_list: selectedPriceList.value || null,
 		}
 	}
 
@@ -1435,6 +1437,23 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		}
 	}
 
+	async function setPriceList(priceList) {
+		const nextPriceList = priceList || null
+		if (nextPriceList === selectedPriceList.value) {
+			return
+		}
+
+		selectedPriceList.value = nextPriceList
+		serverDataFresh.value = false
+		stopBackgroundCacheSync()
+		clearBaseCache()
+		setSearchResults([])
+
+		if (posProfile.value) {
+			await loadAllItems(posProfile.value, true)
+		}
+	}
+
 	function invalidateCache() {
 		// Clear caches to force UI refresh with updated stock
 		clearBaseCache()
@@ -1468,6 +1487,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		sortBy,
 		sortOrder,
 		selectedCustomer,
+		selectedPriceList,
 
 		// ========================================================================
 		// COMPUTED PROPERTIES
@@ -1489,6 +1509,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		setCartItems, // Delegates to stock store for reservations
 		setPosProfile,
 		setCustomer,
+		setPriceList,
 		startBackgroundCacheSync,
 		stopBackgroundCacheSync,
 		cleanup,

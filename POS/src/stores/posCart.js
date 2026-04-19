@@ -26,6 +26,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		draftInvoiceName,
 		additionalDiscount,
 		taxInclusive,
+		selectedPriceList,
 		addItem: addItemToInvoice,
 		removeItem,
 		updateItemQuantity,
@@ -33,6 +34,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		clearCart: clearInvoiceCart,
 		loadTaxRules,
 		setTaxInclusive,
+		setSellingPriceList,
 		saveDraft,
 		setDefaultCustomer,
 		applyDiscount,
@@ -120,10 +122,12 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		customer.value = selectedCustomer
 	}
 
-	async function repriceCartItems(currentProfile = null) {
+	async function repriceCartItems(currentProfile = null, priceList = null) {
 		if (!currentProfile || invoiceItems.value.length === 0) {
 			return true
 		}
+
+		setSellingPriceList(priceList)
 
 		const repricedItems = await Promise.allSettled(
 			invoiceItems.value.map(async (item) => {
@@ -132,6 +136,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 					pos_profile: posProfile.value,
 					customer: customer.value?.name || customer.value,
 					customer_group: customer.value?.customer_group,
+					price_list: priceList || null,
 					qty: item.quantity,
 					uom: item.uom,
 				})
@@ -189,7 +194,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			customer:
 				customer.value?.name || customer.value || currentProfile?.customer,
 			company: currentProfile?.company,
-			selling_price_list: currentProfile?.selling_price_list,
+			selling_price_list: selectedPriceList.value || currentProfile?.selling_price_list,
 			currency: currentProfile?.currency,
 			discount_amount: additionalDiscount.value || 0,
 			coupon_code: appliedCoupon.value?.name || "",
@@ -607,7 +612,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		}
 	}
 
-	async function changeItemUOM(itemCode, newUom) {
+	async function changeItemUOM(itemCode, newUom, priceList = selectedPriceList.value) {
 		try {
 			const cartItem = invoiceItems.value.find((i) => i.item_code === itemCode)
 			if (!cartItem) return
@@ -617,6 +622,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				pos_profile: posProfile.value,
 				customer: customer.value?.name || customer.value,
 				customer_group: customer.value?.customer_group,
+				price_list: priceList || null,
 				qty: cartItem.quantity,
 				uom: newUom,
 			})
@@ -641,7 +647,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		}
 	}
 
-	async function updateItemDetails(itemCode, updatedDetails) {
+	async function updateItemDetails(itemCode, updatedDetails, priceList = selectedPriceList.value) {
 		try {
 			const cartItem = invoiceItems.value.find((i) => i.item_code === itemCode)
 			if (!cartItem) {
@@ -656,6 +662,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 						pos_profile: posProfile.value,
 						customer: customer.value?.name || customer.value,
 						customer_group: customer.value?.customer_group,
+						price_list: priceList || null,
 						qty: updatedDetails.quantity || cartItem.quantity,
 						uom: updatedDetails.uom,
 					})
@@ -813,6 +820,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		draftInvoiceName,
 		additionalDiscount,
 		taxInclusive,
+		selectedPriceList,
 		pendingItem,
 		pendingItemQty,
 		appliedOffers,
@@ -836,6 +844,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		clearPendingItem,
 		loadTaxRules,
 		setTaxInclusive,
+		setSellingPriceList,
 		saveDraft,
 		submitInvoice,
 		applyDiscountToCart,

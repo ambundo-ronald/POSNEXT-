@@ -307,7 +307,7 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
 
 
 @frappe.whitelist()
-def search_by_barcode(barcode, pos_profile, customer=None, customer_group=None):
+def search_by_barcode(barcode, pos_profile, customer=None, customer_group=None, price_list=None):
 	"""Search item by barcode"""
 	try:
 		customer, customer_group = parse_customer_context(customer, customer_group)
@@ -344,7 +344,7 @@ def search_by_barcode(barcode, pos_profile, customer=None, customer_group=None):
 
 		# Get POS Profile details
 		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
-		effective_price_list = resolve_profile_selling_price_list(
+		effective_price_list = price_list or resolve_profile_selling_price_list(
 			pos_profile_doc,
 			customer=customer,
 			customer_group=customer_group,
@@ -475,12 +475,12 @@ def get_batch_serial_details(item_code, warehouse):
 
 
 @frappe.whitelist()
-def get_item_variants(template_item, pos_profile, customer=None, customer_group=None):
+def get_item_variants(template_item, pos_profile, customer=None, customer_group=None, price_list=None):
 	"""Get all variants for a template item with prices and stock"""
 	try:
 		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
 		customer, customer_group = parse_customer_context(customer, customer_group)
-		effective_price_list = resolve_profile_selling_price_list(
+		effective_price_list = price_list or resolve_profile_selling_price_list(
 			pos_profile_doc,
 			customer=customer,
 			customer_group=customer_group,
@@ -961,12 +961,12 @@ def _get_bundle_warehouse_availability_bulk(bundle_codes, warehouses):
 
 
 @frappe.whitelist()
-def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20, customer=None, customer_group=None):
+def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20, customer=None, customer_group=None, price_list=None):
 	"""Get items for POS with stock, price, and tax details"""
 	try:
 		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
 		customer, customer_group = parse_customer_context(customer, customer_group)
-		effective_price_list = resolve_profile_selling_price_list(
+		effective_price_list = price_list or resolve_profile_selling_price_list(
 			pos_profile_doc,
 			customer=customer,
 			customer_group=customer_group,
@@ -1295,7 +1295,7 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 
 
 @frappe.whitelist()
-def get_item_details(item_code, pos_profile, customer=None, customer_group=None, qty=1, uom=None):
+def get_item_details(item_code, pos_profile, customer=None, customer_group=None, qty=1, uom=None, price_list=None):
 	"""Get detailed item info including price, tax, stock"""
 	try:
 		customer, customer_group = parse_customer_context(customer, customer_group)
@@ -1315,7 +1315,7 @@ def get_item_details(item_code, pos_profile, customer=None, customer_group=None,
 			frappe.throw(_("POS Profile is required"))
 
 		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
-		effective_price_list = resolve_profile_selling_price_list(
+		effective_price_list = price_list or resolve_profile_selling_price_list(
 			pos_profile_doc,
 			customer=customer,
 			customer_group=customer_group,
