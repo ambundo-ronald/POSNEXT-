@@ -362,13 +362,13 @@
 											<SelectField
 												v-model="settings.sms_payment_reconciliation_mode"
 												:label="__('SMS Payment Reconciliation')"
-												:description="__('Manual requires cashier selection. Suggested shows likely matches. Auto applies one high-confidence exact match only.')"
+												:description="__('Per POS Profile: Manual requires cashier selection. Suggested shows likely matches. Auto applies one high-confidence exact match only.')"
 												:options="smsReconciliationModeOptions"
 											/>
 											<CheckboxField
 												v-model="settings.sms_enabler_enabled"
-												:label="__('Enable SMS Enabler')"
-												:description="__('Receive forwarded payment SMS messages through the POS Next webhook')"
+												:label="__('Enable Site SMS Enabler')"
+												:description="__('Site-wide: one SMS Enabler device forwards messages to one POS Next webhook for all POS Profiles.')"
 											/>
 											<div
 												v-if="settings.sms_enabler_enabled"
@@ -377,10 +377,10 @@
 												<div class="mb-3 flex items-start justify-between gap-3">
 													<div>
 														<h5 class="text-sm font-semibold text-emerald-950">
-															{{ __('SMS Enabler Webhook') }}
+															{{ __('Site SMS Enabler Webhook') }}
 														</h5>
 														<p class="mt-1 text-xs leading-relaxed text-emerald-800">
-															{{ __('Save these settings, then use this URL in SMS Enabler. Incoming messages will be stored as pending SMS payments automatically.') }}
+															{{ __('Use this same URL for SMS Enabler. Enter the token below in SMS Enabler Tag. Incoming messages become pending SMS payments for POS reconciliation.') }}
 														</p>
 													</div>
 													<button
@@ -389,7 +389,7 @@
 														:disabled="regeneratingSmsToken"
 														@click="regenerateSmsEnablerToken"
 													>
-														{{ regeneratingSmsToken ? __('Generating...') : __('Regenerate Token') }}
+														{{ regeneratingSmsToken ? __('Generating...') : __('Regenerate Site Token') }}
 													</button>
 												</div>
 												<div class="grid gap-3 md:grid-cols-2">
@@ -406,7 +406,7 @@
 													</label>
 													<label class="block">
 														<span class="mb-1 block text-xs font-medium text-gray-700">
-															{{ __('Webhook Token') }}
+															{{ __('Tag / Webhook Token') }}
 														</span>
 														<input
 															:value="settings.sms_enabler_token || __('Generated after save')"
@@ -437,7 +437,7 @@
 														{{ __('Copy Webhook URL') }}
 													</button>
 													<p class="text-xs text-emerald-800">
-														{{ __('SMS Enabler can send sender, text, scts, and tag fields by POST.') }}
+														{{ __('SMS Enabler should POST sender, text, scts, and tag fields. Use the token as the tag value.') }}
 													</p>
 												</div>
 											</div>
@@ -552,6 +552,7 @@ const settings = ref({
 	sms_enabler_source: "SMS Enabler",
 	sms_enabler_token: "",
 	sms_enabler_webhook_url: "",
+	sms_enabler_is_global: 1,
 	silent_print: 0,
 	allow_negative_stock: 0,
 	tax_inclusive: 0,
@@ -601,8 +602,7 @@ const smsEnablerWebhookUrl = computed(() => {
 	}
 
 	if (settings.value.sms_enabler_token && typeof window !== "undefined") {
-		const token = encodeURIComponent(settings.value.sms_enabler_token)
-		return `${window.location.origin}/api/method/pos_next.api.smsenabler_mpesa.receive_sms?token=${token}`
+		return `${window.location.origin}/api/method/pos_next.api.smsenabler_mpesa.receive_sms`
 	}
 
 	return ""
@@ -715,23 +715,16 @@ async function copySmsEnablerWebhookUrl() {
 }
 
 async function regenerateSmsEnablerToken() {
-	if (!props.posProfile) {
-		showError(__("POS Profile not found"))
-		return
-	}
-
 	regeneratingSmsToken.value = true
 	try {
 		const result = await call(
 			"pos_next.pos_next.doctype.pos_settings.pos_settings.regenerate_sms_enabler_token",
-			{
-				pos_profile: props.posProfile,
-			},
 		)
 		settings.value.sms_enabler_enabled = 1
 		settings.value.sms_enabler_token = result?.token || ""
 		settings.value.sms_enabler_webhook_url = result?.webhook_url || ""
-		showSuccess(__("SMS Enabler token regenerated"))
+		settings.value.sms_enabler_is_global = 1
+		showSuccess(__("Site SMS Enabler token regenerated"))
 	} catch (error) {
 		log.error("Failed to regenerate SMS Enabler token:", error)
 		showError(error.message || __("Could not regenerate SMS Enabler token"))

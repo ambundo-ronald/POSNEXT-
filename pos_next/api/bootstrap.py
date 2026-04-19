@@ -128,8 +128,14 @@ def get_pos_profile_data(pos_profile):
 
 def get_pos_settings(pos_profile):
 	"""Get POS Settings for a given POS Profile"""
+	from pos_next.pos_next.doctype.pos_settings.pos_settings import (
+		get_global_sms_enabler_settings,
+	)
+
 	if not pos_profile:
-		return get_default_pos_settings()
+		settings = get_default_pos_settings()
+		settings.update(get_global_sms_enabler_settings())
+		return settings
 
 	try:
 		pos_settings = frappe.db.get_value(
@@ -148,8 +154,6 @@ def get_pos_settings(pos_profile):
 				"allow_write_off_change",
 				"allow_partial_payment",
 				"sms_payment_reconciliation_mode",
-				"sms_enabler_enabled",
-				"sms_enabler_source",
 				"decimal_precision",
 				"allow_negative_stock",
 				"enable_sales_persons",
@@ -159,12 +163,17 @@ def get_pos_settings(pos_profile):
 		)
 
 		if not pos_settings:
-			return get_default_pos_settings()
+			settings = get_default_pos_settings()
+			settings.update(get_global_sms_enabler_settings())
+			return settings
 
+		pos_settings.update(get_global_sms_enabler_settings())
 		return pos_settings
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "Get POS Settings Error")
-		return get_default_pos_settings()
+		settings = get_default_pos_settings()
+		settings.update(get_global_sms_enabler_settings())
+		return settings
 
 
 def get_default_pos_settings():
@@ -183,6 +192,9 @@ def get_default_pos_settings():
 		"sms_payment_reconciliation_mode": "Manual",
 		"sms_enabler_enabled": 0,
 		"sms_enabler_source": "SMS Enabler",
+		"sms_enabler_token": "",
+		"sms_enabler_webhook_url": "",
+		"sms_enabler_is_global": 1,
 		"decimal_precision": "2",
 		"allow_negative_stock": 0,
 		"enable_sales_persons": "Disabled",

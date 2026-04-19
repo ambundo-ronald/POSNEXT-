@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "creation": "2026-04-19 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_sms_enabler",
+  "sms_enabler_enabled",
+  "sms_enabler_source",
+  "column_break_sms_enabler",
+  "sms_enabler_token"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_sms_enabler",
+   "fieldtype": "Section Break",
+   "label": "SMS Enabler"
+  },
+  {
+   "default": "0",
+   "description": "Receive forwarded payment SMS messages through the site-wide POS Next webhook.",
+   "fieldname": "sms_enabler_enabled",
+   "fieldtype": "Check",
+   "label": "Enable SMS Enabler"
+  },
+  {
+   "default": "SMS Enabler",
+   "description": "Label saved on received SMS payment records.",
+   "fieldname": "sms_enabler_source",
+   "fieldtype": "Data",
+   "label": "SMS Source Label"
+  },
+  {
+   "fieldname": "column_break_sms_enabler",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Site-wide security token to enter in SMS Enabler's Tag field.",
+   "fieldname": "sms_enabler_token",
+   "fieldtype": "Data",
+   "label": "Webhook Token",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-04-19 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "POS Next Global Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

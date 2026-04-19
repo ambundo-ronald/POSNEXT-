@@ -30,15 +30,18 @@ SMS Enabler is a Kenyan payment integration that allows you to receive M-Pesa pa
    - **Default Account**: Select your cash/receivables account (e.g., `Cash - KES` or `Undeposited Funds`)
    - **Save**
 
-#### 1.2 Configure SMS Enabler in POS Settings
+#### 1.2 Configure Site-Wide SMS Enabler in POS Settings
 
 1. Open POS Next.
-2. Open **POS Settings** for the active POS Profile.
+2. Open **POS Settings** for any POS Profile.
 3. Go to **Sales Management**.
-4. Enable **SMS Enabler**.
-5. Save the settings. POS Next will generate a webhook token and webhook URL.
+4. Enable **Site SMS Enabler**.
+5. Save the settings. POS Next will generate one site-wide webhook token and webhook URL.
 6. Copy the webhook URL.
+7. Copy the token separately for SMS Enabler's **Tag** field.
 
+> **Important**: SMS Enabler normally accepts one forwarding URL per device. POS Next therefore uses one site-wide webhook for all POS Profiles. The **SMS Payment Reconciliation** mode remains per POS Profile.
+>
 > **Security Note**: Protect this token. Regenerate it from POS Settings if it is exposed.
 
 ---
@@ -52,7 +55,7 @@ SMS Enabler is a Kenyan payment integration that allows you to receive M-Pesa pa
 3. Add a new webhook with:
    - **URL**: Paste the webhook URL copied from POS Settings.
    - **Method**: POST
-   - **Authentication**: The copied URL already includes the token. If your SMS Enabler screen has a **Tag** field, paste the same token there instead of using a query token. You can also send the same token in the `X-SMS-Enabler-Token` header.
+   - **Tag**: Paste the webhook token copied from POS Settings. You can also send the same token in the `X-SMS-Enabler-Token` header if your SMS Enabler version supports custom headers.
 
 4. **Test the webhook** (SMS Enabler will send a test request)
 5. Save configuration

@@ -167,12 +167,14 @@
    "collapsible": 1,
    "fieldname": "section_break_sms_enabler",
    "fieldtype": "Section Break",
+   "hidden": 1,
    "label": "SMS Enabler"
   },
   {
    "default": "0",
    "fieldname": "sms_enabler_enabled",
    "fieldtype": "Check",
+   "hidden": 1,
    "label": "Enable SMS Enabler",
    "description": "Receive payment SMS messages through the POS Next webhook."
   },
@@ -180,16 +182,19 @@
    "default": "SMS Enabler",
    "fieldname": "sms_enabler_source",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "SMS Source Label",
    "description": "Label saved on received SMS payment records."
   },
   {
    "fieldname": "column_break_sms_enabler",
-   "fieldtype": "Column Break"
+   "fieldtype": "Column Break",
+   "hidden": 1
   },
   {
    "fieldname": "sms_enabler_token",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Webhook Token",
    "description": "Security token used by SMS Enabler when posting SMS messages to POS Next.",
    "read_only": 1

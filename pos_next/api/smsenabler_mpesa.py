@@ -15,6 +15,10 @@ import frappe
 from frappe import _
 from frappe.utils import flt, now_datetime, nowdate
 
+from pos_next.pos_next.doctype.pos_settings.pos_settings import (
+	get_global_sms_enabler_settings,
+)
+
 
 SMS_REGISTER_DOCTYPE = "SMS Enabler Payment Register"
 
@@ -46,25 +50,16 @@ def _get_phone_mop_for_company(company):
 
 
 def _get_sms_enabler_settings(pos_profile=None):
-	if not pos_profile:
+	settings = frappe._dict(get_global_sms_enabler_settings())
+	if not settings.get("sms_enabler_enabled"):
 		return None
 
-	settings = frappe.db.get_value(
-		"POS Settings",
-		{"pos_profile": pos_profile, "enabled": 1},
-		[
-			"name",
-			"pos_profile",
-			"sms_enabler_enabled",
-			"sms_enabler_token",
-			"sms_enabler_source",
-		],
-		as_dict=True,
+	settings["pos_profile"] = pos_profile
+	settings["company"] = (
+		frappe.db.get_value("POS Profile", pos_profile, "company")
+		if pos_profile
+		else None
 	)
-	if not settings:
-		return None
-
-	settings["company"] = frappe.db.get_value("POS Profile", pos_profile, "company")
 	return settings
 
 
@@ -72,6 +67,16 @@ def _get_sms_enabler_settings_by_token(token):
 	if not token:
 		return None
 
+	global_settings = frappe._dict(get_global_sms_enabler_settings())
+	if (
+		global_settings.get("sms_enabler_enabled")
+		and global_settings.get("sms_enabler_token")
+		and token == global_settings.get("sms_enabler_token")
+	):
+		return global_settings
+
+	# Backward compatibility for sites that still have SMS Enabler configured on
+	# an older POS Settings record.
 	settings = frappe.db.get_value(
 		"POS Settings",
 		{"enabled": 1, "sms_enabler_enabled": 1, "sms_enabler_token": token},
@@ -259,7 +264,7 @@ def check_sms_enabler_available(company=None, pos_profile=None):
 	if pos_profile and not (settings and settings.get("sms_enabler_enabled")):
 		return {
 			"available": False,
-			"reason": _("SMS Enabler is not enabled in POS Settings"),
+			"reason": _("SMS Enabler is not enabled in POS Next Global Settings"),
 			"mode_of_payment": None,
 			"company": company,
 		}
@@ -300,11 +305,12 @@ def receive_sms(sender=None, message=None, received_at=None, source=None, compan
 	else:
 		settings = _get_sms_enabler_settings_by_token(token)
 		if not settings:
-			configured_count = frappe.db.count(
+			global_settings = get_global_sms_enabler_settings()
+			legacy_configured_count = frappe.db.count(
 				"POS Settings",
 				{"enabled": 1, "sms_enabler_enabled": 1},
 			)
-			if configured_count:
+			if global_settings.get("sms_enabler_enabled") or legacy_configured_count:
 				frappe.throw(_("Invalid SMS Enabler token"), frappe.PermissionError)
 
 	if settings:

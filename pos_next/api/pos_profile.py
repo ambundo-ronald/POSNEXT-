@@ -62,8 +62,14 @@ def get_pos_profile_data(pos_profile):
 @frappe.whitelist()
 def get_pos_settings(pos_profile):
 	"""Get POS Settings for a given POS Profile"""
+	from pos_next.pos_next.doctype.pos_settings.pos_settings import (
+		get_global_sms_enabler_settings,
+	)
+
 	if not pos_profile:
-		return {}
+		settings = {}
+		settings.update(get_global_sms_enabler_settings())
+		return settings
 
 	try:
 		# Get POS Settings linked to this POS Profile
@@ -82,8 +88,6 @@ def get_pos_settings(pos_profile):
 				"allow_write_off_change",
 				"allow_partial_payment",
 				"sms_payment_reconciliation_mode",
-				"sms_enabler_enabled",
-				"sms_enabler_source",
 				"decimal_precision",
 				"allow_negative_stock",
 				"enable_sales_persons"
@@ -93,7 +97,7 @@ def get_pos_settings(pos_profile):
 
 		# Return settings or defaults if not found
 		if not pos_settings:
-			return {
+			settings = {
 				"tax_inclusive": 0,
 				"allow_user_to_edit_additional_discount": 0,
 				"allow_user_to_edit_item_discount": 1,
@@ -105,17 +109,20 @@ def get_pos_settings(pos_profile):
 				"allow_write_off_change": 0,
 				"allow_partial_payment": 0,
 				"sms_payment_reconciliation_mode": "Manual",
-				"sms_enabler_enabled": 0,
-				"sms_enabler_source": "SMS Enabler",
 				"decimal_precision": "2",
 				"allow_negative_stock": 0,
 				"enable_sales_persons": "Disabled"
 			}
+			settings.update(get_global_sms_enabler_settings())
+			return settings
 
+		pos_settings.update(get_global_sms_enabler_settings())
 		return pos_settings
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "Get POS Settings Error")
-		return {}
+		settings = {}
+		settings.update(get_global_sms_enabler_settings())
+		return settings
 
 
 @frappe.whitelist()
