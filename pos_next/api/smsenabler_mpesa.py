@@ -71,6 +71,22 @@ def _get_sms_enabler_settings(pos_profile=None):
 	return settings
 
 
+def _resolve_mapped_mode_of_payment(sender=None, source=None, message=None, settings=None):
+	settings = settings or frappe._dict(get_global_sms_enabler_settings())
+	search_text = "\n".join(str(value or "") for value in (sender, source, message)).lower()
+
+	for mapping in settings.get("sms_enabler_sender_mappings") or []:
+		if not mapping.get("enabled", 1):
+			continue
+
+		match_text = str(mapping.get("match_text") or "").strip().lower()
+		mode_of_payment = mapping.get("mode_of_payment")
+		if match_text and mode_of_payment and match_text in search_text:
+			return mode_of_payment
+
+	return None
+
+
 def _get_sms_enabler_settings_by_token(token):
 	if not token:
 		return None
@@ -392,12 +408,19 @@ def receive_sms(sender=None, message=None, received_at=None, source=None, compan
 		frappe.throw(_("SMS message is required"))
 
 	parsed = parse_sms_message(message, sender=sender, source=source)
+	mapped_mode_of_payment = _resolve_mapped_mode_of_payment(
+		sender=sender,
+		source=source,
+		message=message,
+		settings=settings,
+	)
 
 	doc = frappe.new_doc(SMS_REGISTER_DOCTYPE)
 	doc.sender = sender
 	doc.raw_message = message
 	doc.received_at = received_at or now_datetime()
 	doc.company = company
+	doc.mode_of_payment = mapped_mode_of_payment
 	doc.status = "Pending" if parsed.get("parse_status") == "Parsed" else "Failed Parse"
 	doc.update(parsed)
 	doc.insert(ignore_permissions=True)
@@ -426,6 +449,11 @@ def reparse_sms_payment(name):
 		sender=doc.sender,
 		source=doc.source,
 	)
+	mapped_mode_of_payment = _resolve_mapped_mode_of_payment(
+		sender=doc.sender,
+		source=doc.source,
+		message=doc.raw_message,
+	)
 
 	for field in (
 		"source",
@@ -438,6 +466,9 @@ def reparse_sms_payment(name):
 		"parse_error",
 	):
 		doc.set(field, parsed.get(field))
+
+	if mapped_mode_of_payment:
+		doc.mode_of_payment = mapped_mode_of_payment
 
 	if parsed.get("parse_status") == "Parsed":
 		if doc.status in ("Failed Parse", "Duplicate") or not doc.sales_invoice:

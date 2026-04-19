@@ -10,6 +10,7 @@ SMS_ENABLER_FIELDS = {
 	"sms_enabler_enabled",
 	"sms_enabler_source",
 	"sms_enabler_token",
+	"sms_enabler_sender_mappings",
 }
 
 
@@ -84,6 +85,17 @@ def get_sms_enabler_webhook_url():
 	return get_url("/api/method/pos_next.api.smsenabler_mpesa.receive_sms")
 
 
+def _serialize_sms_sender_mappings(doc):
+	return [
+		{
+			"enabled": cint(row.get("enabled")),
+			"match_text": row.get("match_text") or "",
+			"mode_of_payment": row.get("mode_of_payment") or "",
+		}
+		for row in doc.get("sms_enabler_sender_mappings") or []
+	]
+
+
 def _get_legacy_sms_enabler_settings():
 	"""Return one existing profile-level SMS Enabler config for migration."""
 	return frappe.db.get_value(
@@ -104,6 +116,7 @@ def get_global_sms_enabler_settings(create=False):
 			"sms_enabler_enabled": 0,
 			"sms_enabler_source": "SMS Enabler",
 			"sms_enabler_token": "",
+			"sms_enabler_sender_mappings": [],
 			"sms_enabler_webhook_url": get_sms_enabler_webhook_url(),
 			"sms_enabler_is_global": 1,
 		}
@@ -123,6 +136,7 @@ def get_global_sms_enabler_settings(create=False):
 		"sms_enabler_enabled": cint(doc.get("sms_enabler_enabled")),
 		"sms_enabler_source": doc.get("sms_enabler_source") or "SMS Enabler",
 		"sms_enabler_token": doc.get("sms_enabler_token") or "",
+		"sms_enabler_sender_mappings": _serialize_sms_sender_mappings(doc),
 		"sms_enabler_webhook_url": get_sms_enabler_webhook_url(),
 		"sms_enabler_is_global": 1,
 	}
@@ -136,10 +150,12 @@ def update_global_sms_enabler_settings(settings):
 	current = get_global_sms_enabler_settings()
 	next_enabled = cint(settings.get("sms_enabler_enabled"))
 	next_source = settings.get("sms_enabler_source") or "SMS Enabler"
+	next_mappings = settings.get("sms_enabler_sender_mappings") or []
 
 	if (
 		next_enabled == cint(current.get("sms_enabler_enabled"))
 		and next_source == (current.get("sms_enabler_source") or "SMS Enabler")
+		and next_mappings == (current.get("sms_enabler_sender_mappings") or [])
 	):
 		return current
 
@@ -149,6 +165,22 @@ def update_global_sms_enabler_settings(settings):
 	doc = frappe.get_single(GLOBAL_SETTINGS_DOCTYPE)
 	doc.sms_enabler_enabled = next_enabled
 	doc.sms_enabler_source = next_source
+	doc.set("sms_enabler_sender_mappings", [])
+	for mapping in next_mappings:
+		match_text = (mapping.get("match_text") or "").strip()
+		mode_of_payment = mapping.get("mode_of_payment")
+		if isinstance(mode_of_payment, dict):
+			mode_of_payment = mode_of_payment.get("value") or mode_of_payment.get("label")
+		if not match_text and not mode_of_payment:
+			continue
+		doc.append(
+			"sms_enabler_sender_mappings",
+			{
+				"enabled": cint(mapping.get("enabled", 1)),
+				"match_text": match_text,
+				"mode_of_payment": mode_of_payment,
+			},
+		)
 
 	if cint(doc.sms_enabler_enabled) and not doc.get("sms_enabler_token"):
 		doc.sms_enabler_token = frappe.generate_hash(length=32)

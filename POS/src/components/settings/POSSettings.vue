@@ -474,6 +474,75 @@
 														{{ __('SMS Enabler should POST sender, text, scts, and tag fields. Use the token as the tag value.') }}
 													</p>
 												</div>
+												<div class="mt-4 rounded border border-emerald-200 bg-white p-3">
+													<div class="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+														<div>
+															<h6 class="text-xs font-semibold uppercase tracking-wide text-emerald-900">
+																{{ __('Bank Sender Mapping') }}
+															</h6>
+															<p class="mt-1 text-xs text-emerald-800">
+																{{ __('Match incoming SMS sender text to the Mode of Payment that should receive the Payment Entry.') }}
+															</p>
+														</div>
+														<button
+															type="button"
+															class="rounded border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-50"
+															@click="addSmsSenderMapping"
+														>
+															{{ __('Add Mapping') }}
+														</button>
+													</div>
+													<div v-if="!settings.sms_enabler_sender_mappings?.length" class="rounded border border-dashed border-emerald-200 p-3 text-xs text-gray-500">
+														{{ __('Add mappings like NCBA_BANK -> NCBA Paybill, Equity Bank -> Equity Paybill, IANDMBANK -> I&M Paybill.') }}
+													</div>
+													<div v-else class="flex flex-col gap-2">
+														<div
+															v-for="(mapping, index) in settings.sms_enabler_sender_mappings"
+															:key="index"
+															class="grid gap-2 rounded border border-gray-200 bg-gray-50 p-2 md:grid-cols-[80px_1fr_1fr_auto]"
+														>
+															<label class="flex items-center gap-2 text-xs text-gray-700">
+																<input
+																	v-model="mapping.enabled"
+																	type="checkbox"
+																	class="h-4 w-4 accent-emerald-600"
+																/>
+																{{ __('On') }}
+															</label>
+															<label class="block">
+																<span class="mb-1 block text-[11px] font-medium text-gray-600">
+																	{{ __('Sender Contains') }}
+																</span>
+																<input
+																	v-model="mapping.match_text"
+																	type="text"
+																	class="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+																	:placeholder="__('NCBA_BANK')"
+																/>
+															</label>
+															<label class="block">
+																<span class="mb-1 block text-[11px] font-medium text-gray-600">
+																	{{ __('Mode of Payment') }}
+																</span>
+																<Autocomplete
+																	v-model="mapping.mode_of_payment"
+																	:options="modeOfPaymentOptions"
+																	:loading="loadingModeOfPayments"
+																	@search="searchModeOfPayments"
+																	@select="(option) => mapping.mode_of_payment = option.value"
+																	:allow-custom-value="false"
+																/>
+															</label>
+															<button
+																type="button"
+																class="self-end rounded border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+																@click="removeSmsSenderMapping(index)"
+															>
+																{{ __('Remove') }}
+															</button>
+														</div>
+													</div>
+												</div>
 											</div>
 											<CheckboxField
 												v-model="settings.silent_print"
@@ -587,6 +656,7 @@ const settings = ref({
 	sms_enabler_token: "",
 	sms_enabler_webhook_url: "",
 	sms_enabler_is_global: 1,
+	sms_enabler_sender_mappings: [],
 	silent_print: 0,
 	allow_negative_stock: 0,
 	tax_inclusive: 0,
@@ -596,6 +666,8 @@ const settings = ref({
 const regeneratingSmsToken = ref(false)
 const priceListOptions = ref([])
 const loadingPriceLists = ref(false)
+const modeOfPaymentOptions = ref([])
+const loadingModeOfPayments = ref(false)
 
 // Stock Sync Settings (localStorage persisted)
 const stockSyncEnabled = ref(false)
@@ -678,6 +750,7 @@ const settingsResource = createResource({
 		if (data) {
 			Object.assign(settings.value, data)
 			settings.value.pos_profile = props.posProfile
+			normalizeSmsSenderMappings()
 			// Store original value
 			originalAllowNegativeStock.value = data.allow_negative_stock
 			// Update event system snapshot
@@ -796,6 +869,58 @@ async function searchPriceLists(query = "") {
 	}
 }
 
+async function searchModeOfPayments(query = "") {
+	loadingModeOfPayments.value = true
+	try {
+		const filters = {
+			enabled: 1,
+			name: ["like", `%${query || ""}%`],
+		}
+		const result = await call("frappe.client.get_list", {
+			doctype: "Mode of Payment",
+			fields: ["name", "type"],
+			filters,
+			limit_page_length: 20,
+		})
+
+		modeOfPaymentOptions.value = (result?.message || result || []).map((row) => ({
+			label: row.type ? `${row.name} (${row.type})` : row.name,
+			value: row.name,
+		}))
+	} catch (error) {
+		log.error("Failed to search modes of payment:", error)
+		modeOfPaymentOptions.value = []
+	} finally {
+		loadingModeOfPayments.value = false
+	}
+}
+
+function normalizeSmsSenderMappings() {
+	if (!Array.isArray(settings.value.sms_enabler_sender_mappings)) {
+		settings.value.sms_enabler_sender_mappings = []
+		return
+	}
+
+	settings.value.sms_enabler_sender_mappings = settings.value.sms_enabler_sender_mappings.map((mapping) => ({
+		enabled: mapping.enabled ?? 1,
+		match_text: mapping.match_text || "",
+		mode_of_payment: mapping.mode_of_payment || "",
+	}))
+}
+
+function addSmsSenderMapping() {
+	normalizeSmsSenderMappings()
+	settings.value.sms_enabler_sender_mappings.push({
+		enabled: 1,
+		match_text: "",
+		mode_of_payment: "",
+	})
+}
+
+function removeSmsSenderMapping(index) {
+	settings.value.sms_enabler_sender_mappings.splice(index, 1)
+}
+
 async function loadSettings() {
 	if (!props.posProfile) return
 	loading.value = true
@@ -857,6 +982,7 @@ async function saveSettings() {
 		if (result) {
 			Object.assign(settings.value, result)
 			settings.value.pos_profile = props.posProfile
+			normalizeSmsSenderMappings()
 			// Update original values after successful save
 			originalAllowNegativeStock.value = result.allow_negative_stock
 			originalTaxInclusive.value = result.tax_inclusive
@@ -1025,6 +1151,7 @@ watch(stockSyncIntervalSeconds, () => {
 onMounted(async () => {
 	// Load settings
 	loadStockSyncSettings()
+	searchModeOfPayments()
 
 	// Update status initially
 	await updateStockSyncStatus()

@@ -8,7 +8,9 @@
   "sms_enabler_enabled",
   "sms_enabler_source",
   "column_break_sms_enabler",
-  "sms_enabler_token"
+  "sms_enabler_token",
+  "section_break_sms_sender_mapping",
+  "sms_enabler_sender_mappings"
  ],
  "fields": [
   {
@@ -40,6 +42,18 @@
    "fieldtype": "Data",
    "label": "Webhook Token",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_break_sms_sender_mapping",
+   "fieldtype": "Section Break",
+   "label": "SMS Sender Mapping"
+  },
+  {
+   "description": "Map bank SMS senders to the Mode of Payment that should receive the Payment Entry.",
+   "fieldname": "sms_enabler_sender_mappings",
+   "fieldtype": "Table",
+   "label": "Sender to Mode of Payment",
+   "options": "SMS Enabler Sender Mapping"
   }
  ],
  "index_web_pages_for_search": 1,
