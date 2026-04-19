@@ -37,16 +37,24 @@ def _get_phone_mop_for_company(company):
 		fields=["name"],
 	)
 
+	fallback_mop = None
 	for mop in phone_mops:
 		account = frappe.db.get_value(
 			"Mode of Payment Account",
 			{"parent": mop.name, "company": company},
 			"default_account",
 		)
-		if account:
+		if not account:
+			continue
+
+		account_type = frappe.db.get_value("Account", account, "account_type")
+		if account_type in ("Cash", "Bank"):
 			return mop.name
 
-	return None
+		if not fallback_mop:
+			fallback_mop = mop.name
+
+	return fallback_mop
 
 
 def _get_sms_enabler_settings(pos_profile=None):

@@ -51,6 +51,9 @@ MAX_INVOICE_LIMIT = 500
 # Default payment account types
 DEFAULT_PAYMENT_MODE = "Cash"
 
+PARTY_ACCOUNT_TYPES = {"Receivable", "Payable"}
+PAYMENT_ACCOUNT_TYPES = {"Cash", "Bank"}
+
 
 # ==========================================
 # Payment Tracking - ORM Based with Performance Optimization
@@ -344,6 +347,136 @@ def enrich_invoice_with_payment_history(
 # ==========================================
 
 
+def _is_valid_payment_account(account: Optional[str]) -> bool:
+    """Payment Entry paid_to must be a real cash/bank account, not Debtors."""
+    if not account:
+        return False
+
+    account_data = frappe.db.get_value(
+        "Account",
+        account,
+        ["account_type", "is_group"],
+        as_dict=True,
+    )
+    if not account_data or cint(account_data.get("is_group")):
+        return False
+
+    return account_data.get("account_type") in PAYMENT_ACCOUNT_TYPES
+
+
+def _is_party_account(account: Optional[str]) -> bool:
+    if not account:
+        return False
+
+    account_type = frappe.db.get_value("Account", account, "account_type")
+    return account_type in PARTY_ACCOUNT_TYPES
+
+
+def _resolve_payment_account(
+    mode_of_payment: str,
+    company: str,
+    invoice=None,
+    payment_account: Optional[str] = None,
+) -> str:
+    """Resolve a safe paid_to account for Payment Entry.
+
+    A common bad setup is mapping a POS/SMS mode of payment to Debtors. That
+    account is valid on the invoice side, but not as the received-to account.
+    """
+    if payment_account:
+        if not frappe.db.exists("Account", payment_account):
+            frappe.throw(_("Payment account {0} does not exist").format(payment_account))
+        if _is_valid_payment_account(payment_account):
+            return payment_account
+        if _is_party_account(payment_account):
+            frappe.throw(
+                _("Payment account {0} is a Receivable/Payable account. Set Mode of Payment {1} to a Cash or Bank account.").format(
+                    payment_account,
+                    mode_of_payment,
+                )
+            )
+        frappe.throw(_("Payment account {0} must be a Cash or Bank ledger account").format(payment_account))
+
+    candidates = []
+
+    try:
+        from erpnext.accounts.doctype.sales_invoice.sales_invoice import (
+            get_bank_cash_account,
+        )
+
+        account_info = get_bank_cash_account(mode_of_payment, company)
+        if account_info and account_info.get("account"):
+            candidates.append(account_info.get("account"))
+    except Exception as e:
+        frappe.log_error(
+            title="Failed to get payment account from ERPNext",
+            message=f"Mode of Payment: {mode_of_payment}, Company: {company}, Error: {str(e)}",
+        )
+
+    if invoice and invoice.get("pos_profile"):
+        profile_account = frappe.db.get_value(
+            "POS Payment Method",
+            {
+                "parent": invoice.pos_profile,
+                "mode_of_payment": mode_of_payment,
+            },
+            "default_account",
+        )
+        if profile_account:
+            candidates.append(profile_account)
+
+    mop_account = frappe.db.get_value(
+        "Mode of Payment Account",
+        {"parent": mode_of_payment, "company": company},
+        "default_account",
+    )
+    if mop_account:
+        candidates.append(mop_account)
+
+    for company_field in ("default_cash_account", "default_bank_account"):
+        company_account = frappe.db.get_value("Company", company, company_field)
+        if company_account:
+            candidates.append(company_account)
+
+    fallback_account = frappe.db.get_value(
+        "Account",
+        {
+            "company": company,
+            "account_type": ["in", list(PAYMENT_ACCOUNT_TYPES)],
+            "is_group": 0,
+        },
+        "name",
+    )
+    if fallback_account:
+        candidates.append(fallback_account)
+
+    seen = set()
+    invalid_party_accounts = []
+    for account in candidates:
+        if not account or account in seen:
+            continue
+        seen.add(account)
+        if _is_valid_payment_account(account):
+            return account
+        if _is_party_account(account):
+            invalid_party_accounts.append(account)
+
+    if invalid_party_accounts:
+        frappe.throw(
+            _("Mode of Payment {0} is configured with Receivable/Payable account {1}. Change it to a Cash or Bank account.").format(
+                mode_of_payment,
+                ", ".join(invalid_party_accounts),
+            )
+        )
+
+    frappe.throw(
+        _("Could not determine a Cash or Bank payment account for Mode of Payment {0} in company {1}.").format(
+            mode_of_payment,
+            company,
+        )
+    )
+
+
 def create_payment_entry(
     invoice_name: str,
     amount: float,
@@ -439,34 +572,12 @@ def create_payment_entry(
     # Set accounts
     pe.paid_from = invoice.debit_to  # Customer receivable account
 
-    if payment_account:
-        # Validate provided account
-        if not frappe.db.exists("Account", payment_account):
-            frappe.throw(_("Payment account {0} does not exist").format(payment_account))
-        pe.paid_to = payment_account
-    else:
-        # Get account from Mode of Payment using ERPNext standard method
-        try:
-            from erpnext.accounts.doctype.sales_invoice.sales_invoice import (
-                get_bank_cash_account,
-            )
-
-            account_info = get_bank_cash_account(mode_of_payment, invoice.company)
-            if not account_info or not account_info.get("account"):
-                frappe.throw(
-                    _("Could not determine payment account for {0}. Please specify payment_account parameter.").format(
-                        mode_of_payment
-                    )
-                )
-            pe.paid_to = account_info.get("account")
-        except Exception as e:
-            frappe.log_error(
-                title="Failed to get payment account",
-                message=f"Mode of Payment: {mode_of_payment}, Company: {invoice.company}, Error: {str(e)}"
-            )
-            frappe.throw(
-                _("Could not determine payment account. Please specify payment_account parameter.")
-            )
+    pe.paid_to = _resolve_payment_account(
+        mode_of_payment=mode_of_payment,
+        company=invoice.company,
+        invoice=invoice,
+        payment_account=payment_account,
+    )
 
     # Set amounts
     pe.paid_amount = amount
