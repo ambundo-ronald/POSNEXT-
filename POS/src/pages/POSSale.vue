@@ -1664,6 +1664,7 @@ async function handlePaymentCompleted(paymentData) {
 				grand_total: cartStore.grandTotal,
 				total_tax: cartStore.totalTax,
 				total_discount: cartStore.totalDiscount,
+				is_credit_sale: Boolean(paymentData.is_credit_sale),
 			}
 
 			await offlineStore.saveInvoiceOffline(invoiceData)
@@ -1683,7 +1684,9 @@ async function handlePaymentCompleted(paymentData) {
 			// Get item codes from cart before clearing
 			const soldItemCodes = cartStore.invoiceItems.map(item => item.item_code)
 
-			const result = await cartStore.submitInvoice()
+			const result = await cartStore.submitInvoice({
+				is_credit_sale: Boolean(paymentData.is_credit_sale),
+			})
 
 			if (result) {
 				const invoiceName = result.name || result.message?.name || __('Unknown')

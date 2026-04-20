@@ -64,11 +64,13 @@ def get_pos_settings(pos_profile):
 	"""Get POS Settings for a given POS Profile"""
 	from pos_next.pos_next.doctype.pos_settings.pos_settings import (
 		get_global_sms_enabler_settings,
+		_inject_credit_sale_access,
 	)
 
 	if not pos_profile:
 		settings = {}
 		settings.update(get_global_sms_enabler_settings())
+		_inject_credit_sale_access(settings)
 		return settings
 
 	try:
@@ -77,6 +79,7 @@ def get_pos_settings(pos_profile):
 			"POS Settings",
 			{"pos_profile": pos_profile, "enabled": 1},
 			[
+				"name",
 				"tax_inclusive",
 				"allow_user_to_edit_additional_discount",
 				"allow_user_to_edit_item_discount",
@@ -107,6 +110,9 @@ def get_pos_settings(pos_profile):
 				"max_discount_allowed": 0,
 				"disable_rounded_total": 1,
 				"allow_credit_sale": 0,
+				"credit_sale_users": [],
+				"credit_sale_allowed_for_user": 0,
+				"current_user": frappe.session.user,
 				"allow_return": 0,
 				"allow_write_off_change": 0,
 				"allow_partial_payment": 0,
@@ -118,14 +124,19 @@ def get_pos_settings(pos_profile):
 				"enable_sales_persons": "Disabled"
 			}
 			settings.update(get_global_sms_enabler_settings())
+			settings["pos_profile"] = pos_profile
+			_inject_credit_sale_access(settings)
 			return settings
 
 		pos_settings.update(get_global_sms_enabler_settings())
+		_inject_credit_sale_access(pos_settings)
 		return pos_settings
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "Get POS Settings Error")
 		settings = {}
 		settings.update(get_global_sms_enabler_settings())
+		settings["pos_profile"] = pos_profile
+		_inject_credit_sale_access(settings)
 		return settings
 
 

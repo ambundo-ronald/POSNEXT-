@@ -15,6 +15,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allow_user_to_edit_item_discount: 1, // Allow item-level discounts
 		disable_rounded_total: 1, // Disable rounding for accurate totals
 		allow_credit_sale: 0,
+		credit_sale_users: [],
+		credit_sale_allowed_for_user: 0,
+		current_user: "",
 		allow_return: 0,
 		allow_write_off_change: 0,
 		allow_partial_payment: 0,
@@ -85,9 +88,23 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	const disableRoundedTotal = computed(() =>
 		Boolean(settings.value.disable_rounded_total),
 	)
-	const allowCreditSale = computed(() =>
-		Boolean(settings.value.allow_credit_sale),
+	const creditSaleUsers = computed(() =>
+		Array.isArray(settings.value.credit_sale_users)
+			? settings.value.credit_sale_users
+			: [],
 	)
+	const configuredCreditSaleUsers = computed(() =>
+		creditSaleUsers.value.filter((row) => Boolean(row.enabled ?? 1) && row.user),
+	)
+	const allowCreditSale = computed(() => {
+		if (!Boolean(settings.value.allow_credit_sale)) return false
+		if (settings.value.credit_sale_allowed_for_user !== undefined) {
+			return Boolean(settings.value.credit_sale_allowed_for_user)
+		}
+		if (!configuredCreditSaleUsers.value.length) return true
+		const currentUser = settings.value.current_user
+		return configuredCreditSaleUsers.value.some((row) => row.user === currentUser)
+	})
 	const allowReturn = computed(() => Boolean(settings.value.allow_return))
 	const allowWriteOffChange = computed(() =>
 		Boolean(settings.value.allow_write_off_change),
@@ -274,6 +291,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			allow_user_to_edit_item_discount: 1,
 			disable_rounded_total: 1,
 			allow_credit_sale: 0,
+			credit_sale_users: [],
+			credit_sale_allowed_for_user: 0,
+			current_user: "",
 			allow_return: 0,
 			allow_write_off_change: 0,
 			allow_partial_payment: 0,
@@ -382,6 +402,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allowItemDiscount,
 		disableRoundedTotal,
 		allowCreditSale,
+		creditSaleUsers,
 		allowReturn,
 		allowWriteOffChange,
 		allowPartialPayment,

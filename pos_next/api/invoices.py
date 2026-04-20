@@ -622,6 +622,15 @@ def submit_invoice(invoice=None, data=None):
 
         pos_profile = invoice.get("pos_profile")
         doctype = "Sales Invoice"
+        is_credit_sale = cint((data or {}).get("is_credit_sale") or invoice.get("is_credit_sale"))
+
+        if is_credit_sale:
+            from pos_next.pos_next.doctype.pos_settings.pos_settings import (
+                is_credit_sale_allowed_for_user,
+            )
+
+            if not is_credit_sale_allowed_for_user(pos_profile):
+                frappe.throw(_("You are not allowed to create credit sales for this POS Profile"))
 
         invoice_name = invoice.get("name")
 

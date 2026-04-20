@@ -31,6 +31,14 @@ class POSSettings(Document):
 		if self.sms_payment_reconciliation_mode not in ("Manual", "Suggested", "Auto"):
 			frappe.throw("SMS Payment Reconciliation must be Manual, Suggested, or Auto")
 
+		seen_credit_users = set()
+		for row in self.get("credit_sale_users") or []:
+			if not row.get("user"):
+				frappe.throw("Credit sale user is required")
+			if row.user in seen_credit_users:
+				frappe.throw(f"Duplicate credit sale user: {row.user}")
+			seen_credit_users.add(row.user)
+
 	def on_update(self):
 		"""Sync allow_negative_stock with Stock Settings"""
 		self.sync_negative_stock_setting()
@@ -94,6 +102,83 @@ def _serialize_sms_sender_mappings(doc):
 		}
 		for row in doc.get("sms_enabler_sender_mappings") or []
 	]
+
+
+def _serialize_credit_sale_users(doc):
+	return [
+		{
+			"enabled": cint(row.get("enabled")),
+			"user": row.get("user") or "",
+			"full_name": row.get("full_name") or frappe.db.get_value("User", row.get("user"), "full_name") or "",
+		}
+		for row in doc.get("credit_sale_users") or []
+	]
+
+
+def _inject_credit_sale_access(settings):
+	settings["current_user"] = frappe.session.user
+
+	pos_settings_name = settings.get("name")
+	if pos_settings_name:
+		try:
+			doc = frappe.get_doc("POS Settings", pos_settings_name)
+			settings["credit_sale_users"] = _serialize_credit_sale_users(doc)
+		except Exception:
+			settings["credit_sale_users"] = []
+	else:
+		settings["credit_sale_users"] = []
+
+	settings["credit_sale_allowed_for_user"] = is_credit_sale_allowed_for_user(
+		settings.get("pos_profile"),
+		user=frappe.session.user,
+		settings=settings,
+	)
+	return settings
+
+
+def is_credit_sale_allowed_for_user(pos_profile, user=None, settings=None):
+	user = user or frappe.session.user
+	if not pos_profile:
+		return False
+
+	if settings is None:
+		settings = frappe.db.get_value(
+			"POS Settings",
+			{"pos_profile": pos_profile, "enabled": 1},
+			["name", "allow_credit_sale", "pos_profile"],
+			as_dict=True,
+		)
+
+	if not settings or not cint(settings.get("allow_credit_sale")):
+		return False
+
+	credit_sale_users = settings.get("credit_sale_users")
+	if credit_sale_users is None:
+		pos_settings_name = settings.get("name")
+		if not pos_settings_name:
+			pos_settings_name = frappe.db.get_value(
+				"POS Settings",
+				{"pos_profile": pos_profile, "enabled": 1},
+				"name",
+			)
+
+		if pos_settings_name:
+			credit_sale_users = frappe.get_all(
+				"POS Credit Sale User",
+				filters={"parent": pos_settings_name, "enabled": 1},
+				fields=["user"],
+			)
+		else:
+			credit_sale_users = []
+
+	allowed_users = [row.get("user") for row in credit_sale_users or [] if cint(row.get("enabled", 1)) and row.get("user")]
+
+	# Backward compatibility: if no users are configured, the profile-level
+	# toggle keeps its old behavior and all assigned POS users may sell on credit.
+	if not allowed_users:
+		return True
+
+	return user in allowed_users
 
 
 def _get_legacy_sms_enabler_settings():
@@ -191,6 +276,7 @@ def update_global_sms_enabler_settings(settings):
 
 def _inject_global_sms_enabler_settings(settings):
 	settings.update(get_global_sms_enabler_settings())
+	_inject_credit_sale_access(settings)
 	return settings
 
 
@@ -271,13 +357,16 @@ def update_pos_settings(pos_profile, settings):
 
 	update_global_sms_enabler_settings(settings)
 
+	credit_sale_users = settings.get("credit_sale_users") or []
+
 	# Remove transient values injected for the frontend.
 	settings = {
 		key: value
 		for key, value in settings.items()
 		if not key.startswith("_")
-		and key not in {"sms_enabler_webhook_url", "sms_enabler_is_global"}
+		and key not in {"sms_enabler_webhook_url", "sms_enabler_is_global", "current_user", "credit_sale_allowed_for_user"}
 		and key not in SMS_ENABLER_FIELDS
+		and key != "credit_sale_users"
 	}
 
 	# Check if settings exist
@@ -286,11 +375,38 @@ def update_pos_settings(pos_profile, settings):
 	if existing:
 		doc = frappe.get_doc("POS Settings", existing)
 		doc.update(settings)
+		doc.set("credit_sale_users", [])
+		for row in credit_sale_users:
+			user = row.get("user")
+			if isinstance(user, dict):
+				user = user.get("value") or user.get("label")
+			if not user:
+				continue
+			doc.append(
+				"credit_sale_users",
+				{
+					"enabled": cint(row.get("enabled", 1)),
+					"user": user,
+				},
+			)
 		doc.save()
 	else:
 		doc = frappe.new_doc("POS Settings")
 		doc.pos_profile = pos_profile
 		doc.update(settings)
+		for row in credit_sale_users:
+			user = row.get("user")
+			if isinstance(user, dict):
+				user = user.get("value") or user.get("label")
+			if not user:
+				continue
+			doc.append(
+				"credit_sale_users",
+				{
+					"enabled": cint(row.get("enabled", 1)),
+					"user": user,
+				},
+			)
 		doc.insert()
 
 	result = doc.as_dict()

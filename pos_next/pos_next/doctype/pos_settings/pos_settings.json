@@ -14,6 +14,7 @@
   "disable_rounded_total",
   "column_break_general",
   "allow_credit_sale",
+  "credit_sale_users",
   "allow_return",
   "allow_write_off_change",
   "allow_partial_payment",
@@ -135,6 +136,14 @@
    "fieldtype": "Check",
    "label": "Allow Credit Sale",
    "description": "Enable sales on credit"
+  },
+  {
+   "depends_on": "eval:doc.allow_credit_sale",
+   "description": "Leave empty to allow all POS users assigned to this profile. Add users here to restrict Pay on Account to selected cashiers.",
+   "fieldname": "credit_sale_users",
+   "fieldtype": "Table",
+   "label": "Credit Sale Users",
+   "options": "POS Credit Sale User"
   },
   {
    "default": "0",

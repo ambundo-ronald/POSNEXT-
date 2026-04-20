@@ -376,8 +376,69 @@
 											<CheckboxField
 												v-model="settings.allow_credit_sale"
 												:label="__('Allow Credit Sale')"
-												:description="__('Enable sales on credit')"
+												:description="__('Enable Pay on Account. Leave the user list empty to allow all POS users for this profile.')"
 											/>
+											<div
+												v-if="settings.allow_credit_sale"
+												class="rounded-lg border border-amber-200 bg-amber-50 p-3"
+											>
+												<div class="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+													<div>
+														<h5 class="text-sm font-semibold text-amber-950">
+															{{ __('Credit Sale Users') }}
+														</h5>
+														<p class="mt-1 text-xs text-amber-800">
+															{{ __('If this list is empty, all POS users assigned to this profile can sell on credit. Add users to restrict Pay on Account.') }}
+														</p>
+													</div>
+													<button
+														type="button"
+														class="rounded border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+														@click="addCreditSaleUser"
+													>
+														{{ __('Add User') }}
+													</button>
+												</div>
+												<div v-if="!settings.credit_sale_users?.length" class="rounded border border-dashed border-amber-200 bg-white p-3 text-xs text-gray-500">
+													{{ __('No users selected. Credit sale is allowed for all POS users on this profile.') }}
+												</div>
+												<div v-else class="flex flex-col gap-2">
+													<div
+														v-for="(row, index) in settings.credit_sale_users"
+														:key="index"
+														class="grid gap-2 rounded border border-amber-100 bg-white p-2 md:grid-cols-[80px_1fr_auto]"
+													>
+														<label class="flex items-center gap-2 text-xs text-gray-700">
+															<input
+																v-model="row.enabled"
+																type="checkbox"
+																class="h-4 w-4 accent-amber-600"
+															/>
+															{{ __('On') }}
+														</label>
+														<label class="block">
+															<span class="mb-1 block text-[11px] font-medium text-gray-600">
+																{{ __('Allowed User') }}
+															</span>
+															<Autocomplete
+																v-model="row.user"
+																:options="userOptions"
+																:loading="loadingUsers"
+																@search="searchUsers"
+																@select="(option) => row.user = option.value"
+																:allow-custom-value="false"
+															/>
+														</label>
+														<button
+															type="button"
+															class="self-end rounded border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+															@click="removeCreditSaleUser(index)"
+														>
+															{{ __('Remove') }}
+														</button>
+													</div>
+												</div>
+											</div>
 											<CheckboxField
 												v-model="settings.allow_return"
 												:label="__('Allow Return')"
@@ -647,6 +708,7 @@ const settings = ref({
 	allow_user_to_edit_item_discount: 1,
 	disable_rounded_total: 1,
 	allow_credit_sale: 0,
+	credit_sale_users: [],
 	allow_return: 0,
 	allow_write_off_change: 0,
 	allow_partial_payment: 0,
@@ -668,6 +730,8 @@ const priceListOptions = ref([])
 const loadingPriceLists = ref(false)
 const modeOfPaymentOptions = ref([])
 const loadingModeOfPayments = ref(false)
+const userOptions = ref([])
+const loadingUsers = ref(false)
 
 // Stock Sync Settings (localStorage persisted)
 const stockSyncEnabled = ref(false)
@@ -751,6 +815,7 @@ const settingsResource = createResource({
 			Object.assign(settings.value, data)
 			settings.value.pos_profile = props.posProfile
 			normalizeSmsSenderMappings()
+			normalizeCreditSaleUsers()
 			// Store original value
 			originalAllowNegativeStock.value = data.allow_negative_stock
 			// Update event system snapshot
@@ -895,6 +960,58 @@ async function searchModeOfPayments(query = "") {
 	}
 }
 
+async function searchUsers(query = "") {
+	loadingUsers.value = true
+	try {
+		const result = await call("frappe.client.get_list", {
+			doctype: "User",
+			fields: ["name", "full_name"],
+			filters: { enabled: 1 },
+			or_filters: [
+				["name", "like", `%${query || ""}%`],
+				["full_name", "like", `%${query || ""}%`],
+			],
+			limit_page_length: 20,
+		})
+
+		userOptions.value = (result?.message || result || []).map((row) => ({
+			label: row.full_name ? `${row.full_name} (${row.name})` : row.name,
+			value: row.name,
+		}))
+	} catch (error) {
+		log.error("Failed to search users:", error)
+		userOptions.value = []
+	} finally {
+		loadingUsers.value = false
+	}
+}
+
+function normalizeCreditSaleUsers() {
+	if (!Array.isArray(settings.value.credit_sale_users)) {
+		settings.value.credit_sale_users = []
+		return
+	}
+
+	settings.value.credit_sale_users = settings.value.credit_sale_users.map((row) => ({
+		enabled: row.enabled ?? 1,
+		user: row.user || "",
+		full_name: row.full_name || "",
+	}))
+}
+
+function addCreditSaleUser() {
+	normalizeCreditSaleUsers()
+	settings.value.credit_sale_users.push({
+		enabled: 1,
+		user: "",
+		full_name: "",
+	})
+}
+
+function removeCreditSaleUser(index) {
+	settings.value.credit_sale_users.splice(index, 1)
+}
+
 function normalizeSmsSenderMappings() {
 	if (!Array.isArray(settings.value.sms_enabler_sender_mappings)) {
 		settings.value.sms_enabler_sender_mappings = []
@@ -983,6 +1100,7 @@ async function saveSettings() {
 			Object.assign(settings.value, result)
 			settings.value.pos_profile = props.posProfile
 			normalizeSmsSenderMappings()
+			normalizeCreditSaleUsers()
 			// Update original values after successful save
 			originalAllowNegativeStock.value = result.allow_negative_stock
 			originalTaxInclusive.value = result.tax_inclusive
@@ -1152,6 +1270,7 @@ onMounted(async () => {
 	// Load settings
 	loadStockSyncSettings()
 	searchModeOfPayments()
+	searchUsers()
 
 	// Update status initially
 	await updateStockSyncStatus()

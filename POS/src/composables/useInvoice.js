@@ -702,7 +702,7 @@ export function useInvoice() {
 		return invoiceDoc
 	}
 
-	async function submitInvoice() {
+	async function submitInvoice(options = {}) {
 		/**
 		 * Two-step submission process:
 		 * 1. Create/update draft invoice
@@ -787,6 +787,7 @@ export function useInvoice() {
 			const submitData = {
 				change_amount:
 					remainingAmount.value < 0 ? Math.abs(remainingAmount.value) : 0,
+				is_credit_sale: Boolean(options.is_credit_sale),
 			}
 
 			try {

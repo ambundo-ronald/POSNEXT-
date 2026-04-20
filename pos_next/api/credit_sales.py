@@ -118,15 +118,11 @@ def check_credit_sale_enabled(pos_profile):
 	if not pos_profile:
 		return False
 
-	# Get POS Settings for the profile
-	pos_settings = frappe.db.get_value(
-		"POS Settings",
-		{"pos_profile": pos_profile},
-		"allow_credit_sale",
-		as_dict=False
+	from pos_next.pos_next.doctype.pos_settings.pos_settings import (
+		is_credit_sale_allowed_for_user,
 	)
 
-	return bool(pos_settings)
+	return is_credit_sale_allowed_for_user(pos_profile)
 
 
 @frappe.whitelist()
