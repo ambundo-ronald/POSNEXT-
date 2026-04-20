@@ -254,6 +254,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 
 		isLoading.value = true
 		settings.value.pos_profile = posProfile
+		let hasPreloadedSettings = false
 
 		// OPTIMIZATION: Check if bootstrap has preloaded the settings
 		try {
@@ -262,22 +263,23 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			if (preloadedSettings && Object.keys(preloadedSettings).length > 0) {
 				console.log('[POSSettings Store] Using preloaded settings from bootstrap:', preloadedSettings)
 				Object.assign(settings.value, preloadedSettings)
+				hasPreloadedSettings = true
 				isLoaded.value = true
-				isLoading.value = false
-				return true
 			}
 		} catch (error) {
 			// Bootstrap store may not be available, fall through to API call
 			console.log('[POSSettings Store] Bootstrap not available, fetching from API')
 		}
 
-		// Fallback to API call
+		// Always fetch authoritative settings from the API so runtime changes and
+		// access-controlled fields like credit sale permissions stay correct.
 		try {
 			await settingsResource.submit({ pos_profile: posProfile })
 			return true
 		} catch (error) {
 			console.error("Error loading POS Settings:", error)
-			return false
+			isLoading.value = false
+			return hasPreloadedSettings
 		}
 	}
 

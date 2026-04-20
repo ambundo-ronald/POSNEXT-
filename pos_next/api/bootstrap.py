@@ -145,6 +145,7 @@ def get_pos_settings(pos_profile):
 			{"pos_profile": pos_profile, "enabled": 1},
 			[
 				"name",
+				"pos_profile",
 				"tax_inclusive",
 				"allow_user_to_edit_additional_discount",
 				"allow_user_to_edit_item_discount",
