@@ -118,6 +118,7 @@ def get_pos_profile_data(pos_profile):
 		"warehouse": profile_doc.warehouse,
 		"selling_price_list": profile_doc.selling_price_list,
 		"customer": profile_doc.customer,
+		"account_for_change_amount": profile_doc.get("account_for_change_amount"),
 		"write_off_account": profile_doc.write_off_account,
 		"write_off_cost_center": profile_doc.write_off_cost_center,
 		"print_format": profile_doc.get("print_format"),

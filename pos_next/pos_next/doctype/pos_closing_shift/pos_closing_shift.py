@@ -11,6 +11,7 @@ from erpnext.accounts.doctype.pos_invoice_merge_log.pos_invoice_merge_log import
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
+from pos_next.payment_reconciliation import resolve_change_mode_of_payment
 
 
 def get_base_value(doc, fieldname, base_fieldname=None, conversion_rate=None):
@@ -247,8 +248,11 @@ class POSClosingShift(Document):
 
             change_amount = invoice_doc.get("change_amount") or 0
             if change_amount:
+                change_mode_of_payment = resolve_change_mode_of_payment(
+                    invoice_doc.get("payments", [])
+                ) or cash_mode_of_payment
                 update_payment_breakdown(
-                    cash_mode_of_payment,
+                    change_mode_of_payment,
                     -get_base_value(
                         invoice_doc,
                         "change_amount",
@@ -513,7 +517,8 @@ def make_closing_shift_from_opening(opening_shift):
                 if not cash_mode_of_payment:
                     cash_mode_of_payment = "Cash"
                 conversion_rate = d.get("conversion_rate")
-                if existing_pay[0].mode_of_payment == cash_mode_of_payment:
+                change_mode_of_payment = resolve_change_mode_of_payment(d.payments) or cash_mode_of_payment
+                if existing_pay[0].mode_of_payment == change_mode_of_payment:
                     amount = get_base_value(p, "amount", "base_amount", conversion_rate) - get_base_value(
                         d, "change_amount", "base_change_amount", conversion_rate
                     )

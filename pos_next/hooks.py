@@ -102,7 +102,8 @@ fixtures = [
 					"POS Profile-posa_customer_group_price_lists",
 					"POS Profile-posa_allow_delete",
 					"POS Profile-posa_block_sale_beyond_available_qty",
-					"Mpesa C2B Payment Register-sales_invoice"
+					"Mpesa C2B Payment Register-sales_invoice",
+					"User-posa_pos_user_only"
 				]
 			]
 		]
@@ -127,6 +128,8 @@ fixtures = [
 # before_install = "pos_next.install.before_install"
 after_install = "pos_next.install.after_install"
 after_migrate = "pos_next.install.after_migrate"
+on_session_creation = "pos_next.auth.redirect_pos_only_user_after_login"
+on_logout = "pos_next.auth.redirect_pos_only_user_after_logout"
 
 # Uninstallation
 # ------------
@@ -250,7 +253,7 @@ scheduler_events = {
 
 # Request Events
 # ----------------
-# before_request = ["pos_next.utils.before_request"]
+before_request = ["pos_next.auth.enforce_pos_only_access"]
 # after_request = ["pos_next.utils.after_request"]
 
 # Job Events

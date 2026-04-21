@@ -546,6 +546,7 @@ import { useInvoiceFilters } from "@/composables/useInvoiceFilters"
 import { useInvoiceFiltersStore } from "@/stores/invoiceFilters"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
+import { buildBookkeepingPayments } from "@/utils/paymentReconciliation"
 import { useFormatters } from "@/composables/useFormatters"
 import { useToast } from "@/composables/useToast"
 import { Button, call } from "frappe-ui"
@@ -856,10 +857,11 @@ async function handlePaymentCompleted(paymentData) {
 		const smsEnablerPayments = Array.isArray(paymentData.sms_enabler_payments)
 			? paymentData.sms_enabler_payments
 			: []
+		const bookkeepingPayments = buildBookkeepingPayments(paymentData)
 
 		await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {
 			invoice_name: selectedInvoice.value.name,
-			payments: paymentData.payments,
+			payments: bookkeepingPayments,
 		})
 
 		if (mpesaPayments.length > 0) {

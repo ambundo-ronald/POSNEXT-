@@ -242,6 +242,7 @@ def get_custom_fields_for_cleanup():
 	custom_fields.extend([
 		"Sales Invoice-posa_pos_opening_shift",
 		"Sales Invoice-posa_is_printed",
+		"User-posa_pos_user_only",
 	])
 
 	# Conditional removal (shared with other apps)

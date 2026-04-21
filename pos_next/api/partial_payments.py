@@ -27,6 +27,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from frappe.utils import flt, nowdate, get_datetime, cint, get_time
 from datetime import datetime
 from enum import Enum
+from pos_next.payment_reconciliation import reconcile_change_against_payments
 
 
 # ==========================================
@@ -55,7 +56,6 @@ PARTY_ACCOUNT_TYPES = {"Receivable", "Payable"}
 PAYMENT_ACCOUNT_TYPES = {"Cash", "Bank"}
 
 
-# ==========================================
 # Payment Tracking - ORM Based with Performance Optimization
 # ==========================================
 
@@ -885,7 +885,11 @@ def get_partial_payment_details(invoice_name: str) -> Dict:
 
 
 @frappe.whitelist()
-def add_payment_to_partial_invoice(invoice_name: str, payments) -> Dict:
+def add_payment_to_partial_invoice(
+    invoice_name: str,
+    payments,
+    change_amount: Optional[float] = None,
+) -> Dict:
     """
     Add payments to a partially paid invoice via Payment Entry.
 
@@ -937,9 +941,6 @@ def add_payment_to_partial_invoice(invoice_name: str, payments) -> Dict:
     if not isinstance(payments, list):
         frappe.throw(_("Payments must be a list"))
 
-    if not payments:
-        frappe.throw(_("At least one payment is required"))
-
     # Validate total payment amount doesn't exceed outstanding
     try:
         invoice = frappe.get_doc("Sales Invoice", invoice_name)
@@ -952,8 +953,24 @@ def add_payment_to_partial_invoice(invoice_name: str, payments) -> Dict:
     if not frappe.has_permission("Sales Invoice", "write", invoice_name) and not has_profile_access:
         frappe.throw(_("You don't have permission to add payments to this invoice"))
 
+    if not payments:
+        frappe.throw(_("At least one payment is required"))
+
+    payments, unreconciled_change = reconcile_change_against_payments(
+        payments=payments,
+        outstanding_amount=invoice.outstanding_amount,
+        explicit_change_amount=change_amount,
+    )
+
     total_payment_amount = sum(flt(p.get("amount", 0)) for p in payments)
     if total_payment_amount > flt(invoice.outstanding_amount) + AMOUNT_TOLERANCE:
+        if unreconciled_change > AMOUNT_TOLERANCE:
+            frappe.throw(
+                _(
+                    "Change amount {0} could not be reconciled. Overpayments can only be deducted from Cash or Bank payment modes."
+                ).format(frappe.format_value(unreconciled_change, {"fieldtype": "Currency"}))
+            )
+
         frappe.throw(
             _("Total payment amount {0} exceeds outstanding amount {1}").format(
                 frappe.format_value(total_payment_amount, {"fieldtype": "Currency"}),

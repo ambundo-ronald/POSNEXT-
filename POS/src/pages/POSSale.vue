@@ -715,6 +715,7 @@ import { session } from "@/data/session"
 import { useUserData } from "@/data/user"
 import { parseError } from "@/utils/errorHandler"
 import { offlineWorker } from "@/utils/offline/workerClient"
+import { buildBookkeepingPayments } from "@/utils/paymentReconciliation"
 import { printInvoice, printInvoiceByName } from "@/utils/printInvoice"
 import { Button, Dialog, createResource } from "frappe-ui"
 import { call } from "@/utils/apiWrapper"
@@ -1618,6 +1619,13 @@ async function handlePaymentCompleted(paymentData) {
 		const paymentEntries = Array.isArray(paymentData.payments)
 			? paymentData.payments
 			: []
+		const directPosPayments = paymentEntries
+			.filter((entry) => !entry.is_customer_credit)
+			.map((entry) => ({
+				mode_of_payment: entry.mode_of_payment,
+				amount: entry.amount,
+				type: entry.type,
+			}))
 		const mpesaPayments = Array.isArray(paymentData.mpesa_payments)
 			? paymentData.mpesa_payments
 			: []
@@ -1632,13 +1640,9 @@ async function handlePaymentCompleted(paymentData) {
 		}
 
 		cartStore.payments = []
-		if (offlineStore.isOffline && paymentEntries.length) {
-			paymentEntries.forEach((p) => {
-				cartStore.payments.push({
-					mode_of_payment: p.mode_of_payment,
-					amount: p.amount,
-					type: p.type,
-				})
+		if (directPosPayments.length) {
+			directPosPayments.forEach((payment) => {
+				cartStore.payments.push(payment)
 			})
 		}
 		cartStore.rebuildIncrementalCache()
@@ -1692,7 +1696,10 @@ async function handlePaymentCompleted(paymentData) {
 				const invoiceName = result.name || result.message?.name || __('Unknown')
 				const invoiceTotal = result.grand_total || result.total || 0
 				const paidAmount = paymentData.paid_amount || invoiceTotal
-				const bookkeepingPayments = buildBookkeepingPayments(paymentData)
+				const shouldCreatePaymentEntries = directPosPayments.length === 0
+				const bookkeepingPayments = shouldCreatePaymentEntries
+					? buildBookkeepingPayments(paymentData)
+					: []
 
 				if (bookkeepingPayments.length > 0 && invoiceName !== __('Unknown')) {
 					try {
@@ -1791,47 +1798,6 @@ async function handlePaymentCompleted(paymentData) {
 			showWarning(errorContext.message)
 		}
 	}
-}
-
-function buildBookkeepingPayments(paymentData) {
-	const entries = Array.isArray(paymentData?.payments)
-		? paymentData.payments
-		: []
-	let changeToApply = Number.parseFloat(paymentData?.change_amount || 0) || 0
-
-	const payments = entries
-		.filter((entry) => !entry.is_customer_credit)
-		.map((entry) => ({
-			...entry,
-			amount: Number.parseFloat(entry.amount || 0) || 0,
-		}))
-
-	for (const payment of payments) {
-		if (changeToApply <= 0) break
-
-		const isCashPayment =
-			String(payment.type || "").toLowerCase() === "cash" ||
-			String(payment.mode_of_payment || "").toLowerCase().includes("cash")
-
-		if (!isCashPayment || payment.amount <= 0) continue
-
-		const changeApplied = Math.min(payment.amount, changeToApply)
-		payment.amount = Number.parseFloat((payment.amount - changeApplied).toFixed(2))
-		changeToApply = Number.parseFloat((changeToApply - changeApplied).toFixed(2))
-	}
-
-	return payments
-		.filter((entry) => entry.amount > 0)
-		.map((entry) => ({
-			mode_of_payment: entry.mode_of_payment,
-			amount: entry.amount,
-			account: entry.account,
-			reference_no:
-				entry.reference_no ||
-				entry.sms_transaction_id ||
-				entry.mpesa_transaction_id ||
-				null,
-		}))
 }
 
 function handleClearCart() {

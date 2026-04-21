@@ -133,6 +133,34 @@ function add_to_pos_payments(d, frm) {
 	});
 }
 
+function resolve_change_mode_of_payment(payments) {
+	if (!Array.isArray(payments)) {
+		return null;
+	}
+
+	for (let index = payments.length - 1; index >= 0; index -= 1) {
+		const payment = payments[index] || {};
+		const amount = flt(payment.amount || 0);
+		const paymentType = String(payment.type || "").trim().toLowerCase();
+		const modeOfPayment = String(payment.mode_of_payment || "").trim().toLowerCase();
+
+		if (amount <= 0) {
+			continue;
+		}
+
+		if (
+			paymentType === "cash" ||
+			paymentType === "bank" ||
+			modeOfPayment.includes("cash") ||
+			modeOfPayment.includes("bank")
+		) {
+			return payment.mode_of_payment;
+		}
+	}
+
+	return null;
+}
+
 function add_to_payments(d, frm, conversion_rate) {
         d.payments.forEach((p) => {
                 const payment = frm.doc.payment_reconciliation.find(
@@ -148,7 +176,9 @@ function add_to_payments(d, frm, conversion_rate) {
                         if (!cash_mode_of_payment) {
                                 cash_mode_of_payment = "Cash";
                         }
-                        if (payment.mode_of_payment == cash_mode_of_payment) {
+                        const changeModeOfPayment =
+                                resolve_change_mode_of_payment(d.payments) || cash_mode_of_payment;
+                        if (payment.mode_of_payment == changeModeOfPayment) {
                                 amount -= get_base_value(d, "change_amount", "base_change_amount", conversion_rate);
                         }
                         payment.expected_amount += flt(amount);

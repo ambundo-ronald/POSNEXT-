@@ -10,6 +10,7 @@ from frappe.utils import flt, cint, nowdate, nowtime, get_datetime, cstr
 from erpnext.stock.doctype.batch.batch import get_batch_qty, get_batch_no
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
 from pos_next.pricing import resolve_profile_selling_price_list
+from pos_next.payment_reconciliation import resolve_change_mode_of_payment
 
 try:
     from erpnext.accounts.doctype.pricing_rule.pricing_rule import (
@@ -98,6 +99,22 @@ def get_payment_account(mode_of_payment, company):
     )
 
 
+def get_pos_change_account(pos_profile):
+    if not pos_profile:
+        return None
+
+    try:
+        profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+    except Exception:
+        return None
+
+    return (
+        profile_doc.get("account_for_change_amount")
+        or profile_doc.get("change_amount_account")
+        or None
+    )
+
+
 def normalize_pos_invoice_payments(invoice_doc, company=None):
     """Make POS payment rows deterministic before saving/submitting.
 
@@ -139,12 +156,38 @@ def normalize_pos_invoice_payments(invoice_doc, company=None):
     )
 
     if total_paid > grand_total:
+        change_account = get_pos_change_account(invoice_doc.get("pos_profile"))
+        change_mode_of_payment = resolve_change_mode_of_payment(invoice_doc.get("payments", []))
+
+        if not change_mode_of_payment:
+            frappe.throw(
+                _(
+                    "Change can only be reconciled against a Cash or Bank payment mode."
+                )
+            )
+
+        if not change_account:
+            frappe.throw(
+                _(
+                    "Set Account for Change Amount on POS Profile {0} before accepting overpayments."
+                ).format(invoice_doc.get("pos_profile") or "")
+            )
+
         invoice_doc.change_amount = flt(total_paid - grand_total)
         invoice_doc.base_change_amount = flt(total_base_paid - base_grand_total)
+        if not invoice_doc.meta.has_field("account_for_change_amount"):
+            frappe.throw(
+                _(
+                    "Sales Invoice is missing the Account for Change Amount field required for POS change reconciliation."
+                )
+            )
+        invoice_doc.account_for_change_amount = change_account
         invoice_doc.outstanding_amount = 0
     else:
         invoice_doc.change_amount = 0
         invoice_doc.base_change_amount = 0
+        if invoice_doc.meta.has_field("account_for_change_amount"):
+            invoice_doc.account_for_change_amount = None
         invoice_doc.outstanding_amount = flt(grand_total - total_paid)
 
 
