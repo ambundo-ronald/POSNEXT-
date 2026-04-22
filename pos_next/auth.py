@@ -2,9 +2,11 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe.utils import cint
 
 
 DESK_ROUTE_PREFIXES = ("/app", "/desk")
+DESK_API_PREFIXES = ("/api/method/frappe.desk.", "/api/method/frappe.desk/")
 POS_HOME_ROUTE = "/pos"
 POS_LOGIN_ROUTE = "/pos/account/login"
 
@@ -14,7 +16,7 @@ def is_pos_only_user(user=None):
     if not user or user == "Guest":
         return False
 
-    return bool(frappe.db.get_value("User", user, "posa_pos_user_only"))
+    return bool(cint(frappe.db.get_value("User", user, "posa_pos_user_only")))
 
 
 def is_desk_request(path):
@@ -22,7 +24,7 @@ def is_desk_request(path):
     return any(
         normalized_path == prefix or normalized_path.startswith(f"{prefix}/")
         for prefix in DESK_ROUTE_PREFIXES
-    )
+    ) or any(normalized_path.startswith(prefix) for prefix in DESK_API_PREFIXES)
 
 
 def enforce_pos_only_access():
@@ -39,12 +41,17 @@ def enforce_pos_only_access():
     if not is_desk_request(request.path):
         return
 
-    set_redirect(POS_HOME_ROUTE)
+    redirect(POS_HOME_ROUTE, raise_exception=True)
 
 
-def set_redirect(location):
+def redirect(location, raise_exception=False):
+    frappe.flags.redirect_location = location
     frappe.local.response["type"] = "redirect"
     frappe.local.response["location"] = location
+    frappe.local.response["http_status_code"] = 302
+
+    if raise_exception:
+        raise frappe.Redirect
 
 
 def redirect_pos_only_user_after_login(login_manager):
@@ -52,7 +59,7 @@ def redirect_pos_only_user_after_login(login_manager):
     if not is_pos_only_user(user):
         return
 
-    set_redirect(POS_HOME_ROUTE)
+    redirect(POS_HOME_ROUTE)
 
 
 def redirect_pos_only_user_after_logout(login_manager):
@@ -60,4 +67,4 @@ def redirect_pos_only_user_after_logout(login_manager):
     if not is_pos_only_user(user):
         return
 
-    set_redirect(POS_LOGIN_ROUTE)
+    redirect(POS_LOGIN_ROUTE)
