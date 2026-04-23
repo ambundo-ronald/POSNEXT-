@@ -1687,19 +1687,18 @@ async function handlePaymentCompleted(paymentData) {
 		} else {
 			// Get item codes from cart before clearing
 			const soldItemCodes = cartStore.invoiceItems.map(item => item.item_code)
+			const bookkeepingPayments = buildBookkeepingPayments(paymentData)
+			const shouldSettleWithPaymentEntries = bookkeepingPayments.length > 0
 
 			const result = await cartStore.submitInvoice({
 				is_credit_sale: Boolean(paymentData.is_credit_sale),
+				submitInlinePayments: !shouldSettleWithPaymentEntries,
 			})
 
 			if (result) {
 				const invoiceName = result.name || result.message?.name || __('Unknown')
 				const invoiceTotal = result.grand_total || result.total || 0
 				const paidAmount = paymentData.paid_amount || invoiceTotal
-				const shouldCreatePaymentEntries = directPosPayments.length === 0
-				const bookkeepingPayments = shouldCreatePaymentEntries
-					? buildBookkeepingPayments(paymentData)
-					: []
 
 				if (bookkeepingPayments.length > 0 && invoiceName !== __('Unknown')) {
 					try {

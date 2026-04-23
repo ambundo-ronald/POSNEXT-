@@ -923,6 +923,11 @@ def get_invoices(pos_profile, limit=100):
 		"limit": limit
 	}, as_dict=True)
 
+	try:
+		from pos_next.api.partial_payments import enrich_invoice_with_payment_history
+	except Exception:
+		enrich_invoice_with_payment_history = None
+
 	# Load items for each invoice for filtering purposes
 	for invoice in invoices:
 		items = frappe.db.sql("""
@@ -942,6 +947,17 @@ def get_invoices(pos_profile, limit=100):
 			"invoice_name": invoice.name
 		}, as_dict=True)
 		invoice.items = items
+
+		if not enrich_invoice_with_payment_history:
+			continue
+
+		try:
+			enrich_invoice_with_payment_history(invoice, include_metadata=True)
+		except Exception:
+			frappe.log_error(
+				title=f"Failed to enrich invoice payment history for {invoice.name}",
+				message=frappe.get_traceback(),
+			)
 
 	return invoices
 

@@ -714,6 +714,8 @@ export function useInvoice() {
 			const rawItems = toRaw(invoiceItems.value)
 			const rawPayments = toRaw(payments.value)
 			const rawSalesTeam = toRaw(salesTeam.value)
+			const inlinePayments =
+				options.submitInlinePayments === false ? [] : rawPayments
 
 			const invoiceData = {
 				doctype: "Sales Invoice",
@@ -745,7 +747,7 @@ export function useInvoice() {
 					discount_percentage: item.discount_percentage || 0,
 					discount_amount: item.discount_amount || 0,
 				})),
-				payments: rawPayments.map((p) => ({
+				payments: inlinePayments.map((p) => ({
 					mode_of_payment: p.mode_of_payment,
 					amount: p.amount,
 					type: p.type,
