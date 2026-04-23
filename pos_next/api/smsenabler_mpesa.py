@@ -13,7 +13,7 @@ import re
 
 import frappe
 from frappe import _
-from frappe.utils import flt, now_datetime, nowdate
+from frappe.utils import flt, getdate, now_datetime, nowdate
 
 from pos_next.pos_next.doctype.pos_settings.pos_settings import (
 	get_global_sms_enabler_settings,
@@ -556,6 +556,44 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 
 
 @frappe.whitelist()
+def get_sms_payments_for_payment_reconciliation(company=None, party_type=None, party=None, search=None):
+	if party_type and party_type != "Customer":
+		return {"count": 0, "payments": []}
+
+	customer = party if party_type == "Customer" else None
+	result = get_sms_payments(company=company, search=search, customer=customer)
+	formatted_payments = []
+
+	for payment in result.get("payments") or []:
+		reference_name = payment.get("transaction_id") or payment.get("name")
+		received_at = payment.get("received_at")
+		posting_date = getdate(received_at) if received_at else None
+		reference_type = payment.get("sender") or payment.get("source") or _("SMS Enabler")
+
+		formatted_payments.append(
+			{
+				"name": payment.get("name"),
+				"sms_payment": payment.get("name"),
+				"reference_name": reference_name,
+				"posting_date": posting_date,
+				"amount": flt(payment.get("amount")),
+				"reference_type": reference_type,
+				"sender": payment.get("sender"),
+				"source": payment.get("source"),
+				"payer_name": payment.get("payer_name"),
+				"payer_phone": payment.get("payer_phone"),
+				"account_reference": payment.get("account_reference"),
+				"received_at": received_at,
+				"match_score": payment.get("match_score", 0),
+				"match_level": payment.get("match_level"),
+			}
+		)
+
+	result["payments"] = formatted_payments
+	return result
+
+
+@frappe.whitelist()
 def get_sms_payment_matches_for_invoice(invoice=None, search=None):
 	if not invoice:
 		frappe.throw(_("Sales Invoice is required"))
@@ -719,6 +757,22 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 	names = _parse_payment_names(sms_payments)
 	if not names:
 		frappe.throw(_("No SMS Enabler payments selected"))
+
+	selected_total = 0
+	for name in names:
+		selected_total += flt(
+			frappe.db.get_value(SMS_REGISTER_DOCTYPE, name, "amount") or 0
+		)
+
+	# POS checkout normally includes SMS selections as direct Sales Invoice payment rows.
+	# If the invoice still shows less paid than the selected SMS total, fall back to the
+	# reconciliation path so the invoice is actually settled before the SMS rows are consumed.
+	if (
+		invoice_doc.docstatus == 1
+		and selected_total > flt(invoice_doc.paid_amount) + 0.01
+		and flt(invoice_doc.outstanding_amount) > 0.01
+	):
+		return reconcile_invoice_with_sms_payments(invoice=invoice, sms_payments=names)
 
 	processed = []
 	for name in names:

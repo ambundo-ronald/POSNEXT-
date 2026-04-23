@@ -48,7 +48,9 @@ _asset_version = get_build_version()
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+	"Payment Reconciliation": "public/js/payment_reconciliation.js"
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -102,6 +104,9 @@ fixtures = [
 					"POS Profile-posa_customer_group_price_lists",
 					"POS Profile-posa_allow_delete",
 					"POS Profile-posa_block_sale_beyond_available_qty",
+					"Payment Reconciliation-posa_payment_source",
+					"Payment Reconciliation Payment-posa_reference_type",
+					"Payment Reconciliation Payment-posa_sms_payment",
 					"Mpesa C2B Payment Register-sales_invoice",
 					"User-posa_pos_user_only"
 				]
