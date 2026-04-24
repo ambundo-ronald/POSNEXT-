@@ -27,7 +27,16 @@ from typing import Dict, List, Optional, Tuple, Any
 from frappe.utils import flt, nowdate, get_datetime, cint, get_time
 from datetime import datetime
 from enum import Enum
-from pos_next.payment_reconciliation import reconcile_change_against_payments
+from pos_next.payment_reconciliation import (
+    get_mode_of_payment_type,
+    reconcile_change_against_payments,
+)
+from pos_next.pos_next.doctype.cash_payment_register.cash_payment_register import (
+    create_or_get_cash_payment_register,
+    find_matching_payment_entry as find_matching_cash_payment_entry,
+    mark_cash_payment_register_failed,
+    mark_cash_payment_register_reconciled,
+)
 
 
 # ==========================================
@@ -980,6 +989,7 @@ def add_payment_to_partial_invoice(
 
     # Create Payment Entries - with transactional rollback on failure
     payment_entries_created = []
+    cash_register_entries = []
 
     try:
         for idx, payment in enumerate(payments, 1):
@@ -996,6 +1006,33 @@ def add_payment_to_partial_invoice(
             mode_of_payment = payment.get("mode_of_payment") or DEFAULT_PAYMENT_MODE
             payment_account = payment.get("account")
             reference_no = payment.get("reference_no")
+            cash_register_name = None
+            is_cash_payment = get_mode_of_payment_type(mode_of_payment) == "cash"
+
+            if is_cash_payment:
+                reference_no = reference_no or f"CASH-{invoice_name}-{idx}"
+                payment["reference_no"] = reference_no
+                cash_register_name = create_or_get_cash_payment_register(
+                    invoice_doc=invoice,
+                    amount=amount,
+                    mode_of_payment=mode_of_payment,
+                    reference_no=reference_no,
+                    remarks=f"POS Cash Payment - {mode_of_payment}",
+                )
+                cash_register_entries.append(cash_register_name)
+
+                existing_cash_entry = find_matching_cash_payment_entry(
+                    invoice_name=invoice_name,
+                    mode_of_payment=mode_of_payment,
+                    amount=amount,
+                    reference_no=reference_no,
+                )
+                if existing_cash_entry:
+                    mark_cash_payment_register_reconciled(
+                        cash_register_name,
+                        existing_cash_entry,
+                    )
+                    continue
 
             pe_name = create_payment_entry(
                 invoice_name=invoice_name,
@@ -1007,8 +1044,27 @@ def add_payment_to_partial_invoice(
             )
 
             payment_entries_created.append(pe_name)
+            if cash_register_name:
+                mark_cash_payment_register_reconciled(cash_register_name, pe_name)
 
     except Exception as e:
+        for cash_register_name in cash_register_entries:
+            payment_entry = frappe.db.get_value(
+                "Cash Payment Register",
+                cash_register_name,
+                "payment_entry",
+            )
+            if payment_entry:
+                continue
+
+            try:
+                mark_cash_payment_register_failed(cash_register_name, e)
+            except Exception:
+                frappe.log_error(
+                    title=f"Failed to update Cash Payment Register {cash_register_name}",
+                    message=frappe.get_traceback(),
+                )
+
         # Rollback: Cancel all previously created payment entries
         for pe_name in payment_entries_created:
             try:
@@ -1041,6 +1097,7 @@ def add_payment_to_partial_invoice(
     # Get updated invoice details
     result = get_partial_payment_details(invoice_name)
     result["payment_entries_created"] = payment_entries_created
+    result["cash_register_entries"] = cash_register_entries
     result["success"] = True
 
     return result
