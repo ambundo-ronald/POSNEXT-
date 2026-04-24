@@ -155,7 +155,7 @@ def normalize_pos_invoice_payments(invoice_doc, company=None):
         or (grand_total * conversion_rate)
     )
 
-    if total_paid > grand_total:
+    if not cint(invoice_doc.get("is_return")) and total_paid > grand_total:
         change_account = get_pos_change_account(invoice_doc.get("pos_profile"))
         change_mode_of_payment = resolve_change_mode_of_payment(invoice_doc.get("payments", []))
 
@@ -594,6 +594,14 @@ def update_invoice(data):
             invoice_doc.base_paid_amount = flt(
                 sum(p.base_amount or 0 for p in invoice_doc.payments)
             )
+            grand_total = flt(
+                invoice_doc.get("rounded_total") or invoice_doc.get("grand_total") or 0
+            )
+            invoice_doc.outstanding_amount = flt(grand_total - invoice_doc.paid_amount)
+            invoice_doc.change_amount = 0
+            invoice_doc.base_change_amount = 0
+            if invoice_doc.meta.has_field("account_for_change_amount"):
+                invoice_doc.account_for_change_amount = None
 
         # Validate and track POS Coupon if coupon_code is provided
         coupon_code = data.get("coupon_code")
