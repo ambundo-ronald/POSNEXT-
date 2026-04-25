@@ -494,6 +494,45 @@ def reparse_sms_payment(name):
 
 
 @frappe.whitelist()
+def recheck_duplicate_sms_payments(sender=None, company=None, limit=500):
+	"""Re-evaluate duplicate SMS payment rows after duplicate rules change."""
+	filters = {"status": "Duplicate"}
+	if sender:
+		filters["sender"] = sender
+	if company:
+		filters["company"] = company
+
+	rows = frappe.get_all(
+		SMS_REGISTER_DOCTYPE,
+		filters=filters,
+		fields=["name"],
+		order_by="received_at desc",
+		limit_page_length=limit,
+	)
+
+	updated = []
+	unchanged = []
+	for row in rows:
+		doc = frappe.get_doc(SMS_REGISTER_DOCTYPE, row.name)
+		previous_status = doc.status
+		doc.flags.ignore_permissions = True
+		doc.save()
+
+		result = {"name": doc.name, "status": doc.status}
+		if doc.status != previous_status:
+			updated.append(result)
+		else:
+			unchanged.append(result)
+
+	return {
+		"success": True,
+		"checked": len(rows),
+		"updated": updated,
+		"unchanged": unchanged,
+	}
+
+
+@frappe.whitelist()
 def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, customer=None):
 	search = (search or "").strip()
 	amount = flt(amount or 0)
