@@ -767,6 +767,17 @@ def submit_invoice(invoice=None, data=None):
         # which checks POS Settings in the update_stock_ledger method
         try:
             invoice_doc.submit()
+            try:
+                from pos_next.pos_next.doctype.cash_payment_register.cash_payment_register import (
+                    register_inline_pos_cash_payments,
+                )
+
+                register_inline_pos_cash_payments(invoice_doc)
+            except Exception:
+                frappe.log_error(
+                    title=f"Failed to register inline cash payments for {invoice_doc.name}",
+                    message=frappe.get_traceback(),
+                )
         except Exception as submit_error:
             # If submission fails, cleanup the invoice to prevent stock reservation issues
             try:

@@ -115,6 +115,36 @@ def mark_cash_payment_register_failed(name, error_message):
 	frappe.db.commit()
 
 
+def register_inline_pos_cash_payments(invoice_doc):
+	"""Record cash rows paid directly on a submitted POS Sales Invoice."""
+	if not invoice_doc or not invoice_doc.get("is_pos"):
+		return []
+
+	from pos_next.payment_reconciliation import get_mode_of_payment_type
+
+	registered = []
+	for idx, payment in enumerate(invoice_doc.get("payments") or [], 1):
+		mode_of_payment = payment.get("mode_of_payment")
+		amount = flt(payment.get("amount"))
+		if amount <= AMOUNT_TOLERANCE:
+			continue
+
+		if get_mode_of_payment_type(mode_of_payment) != "cash":
+			continue
+
+		register_name = create_or_get_cash_payment_register(
+			invoice_doc=invoice_doc,
+			amount=amount,
+			mode_of_payment=mode_of_payment,
+			reference_no=f"INLINE-{invoice_doc.name}-{idx}",
+			remarks=f"Inline POS cash payment - {mode_of_payment}",
+		)
+		mark_cash_payment_register_reconciled(register_name, None)
+		registered.append(register_name)
+
+	return registered
+
+
 @frappe.whitelist()
 def retry_cash_payment_entry(name):
 	doc = frappe.get_doc("Cash Payment Register", name)

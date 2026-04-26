@@ -232,19 +232,81 @@
 						<div class="text-start">
 							<h4 class="text-sm font-semibold text-blue-900">{{ __('Recover Payment') }}</h4>
 							<p class="text-xs text-blue-700 mt-1">
-								{{ __('Create a Payment Entry from pending SMS Enabler payments for this invoice.') }}
+								{{ __('Create a Payment Entry for cash or pending SMS Enabler payments for this invoice.') }}
 							</p>
 							<p class="text-xs font-semibold text-blue-900 mt-2">
 								{{ __('Outstanding:') }} {{ formatCurrency(invoiceData.outstanding_amount) }}
 							</p>
 						</div>
-						<Button
-							variant="solid"
-							theme="blue"
-							@click="openSmsPaymentMatcher"
-						>
-							{{ showSmsPaymentMatcher ? __('Refresh Matches') : __('Create Payment Entry') }}
-						</Button>
+						<div class="flex flex-wrap justify-end gap-2">
+							<Button
+								variant="subtle"
+								@click="toggleCashPaymentForm"
+							>
+								{{ showCashPaymentForm ? __('Hide Cash') : __('Add Cash') }}
+							</Button>
+							<Button
+								variant="solid"
+								theme="blue"
+								@click="openSmsPaymentMatcher"
+							>
+								{{ showSmsPaymentMatcher ? __('Refresh SMS') : __('Find SMS') }}
+							</Button>
+						</div>
+					</div>
+
+					<div v-if="showCashPaymentForm" class="mt-4 bg-white border border-blue-100 rounded-lg p-3">
+						<div class="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_1fr_auto] gap-3 md:items-end">
+							<div>
+								<label class="block text-xs font-semibold text-gray-700 mb-1">{{ __('Cash Mode') }}</label>
+								<select
+									v-model="cashModeOfPayment"
+									class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+									:disabled="cashPaymentMethodsLoading || cashPaymentMethods.length === 0"
+								>
+									<option value="" disabled>{{ __('Select cash mode') }}</option>
+									<option
+										v-for="method in cashPaymentMethods"
+										:key="method.mode_of_payment"
+										:value="method.mode_of_payment"
+									>
+										{{ method.mode_of_payment }}
+									</option>
+								</select>
+							</div>
+							<div>
+								<label class="block text-xs font-semibold text-gray-700 mb-1">{{ __('Amount') }}</label>
+								<input
+									v-model.number="cashPaymentAmount"
+									type="number"
+									min="0"
+									step="0.01"
+									class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+									:placeholder="formatCurrency(invoiceData.outstanding_amount)"
+								/>
+							</div>
+							<div>
+								<label class="block text-xs font-semibold text-gray-700 mb-1">{{ __('Reference') }}</label>
+								<input
+									v-model="cashReferenceNo"
+									type="text"
+									class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+									:placeholder="__('Optional')"
+								/>
+							</div>
+							<Button
+								variant="solid"
+								theme="green"
+								:loading="reconcilingCashPayment"
+								:disabled="!canReconcileCashPayment"
+								@click="reconcileCashPayment"
+							>
+								{{ __('Reconcile Cash') }}
+							</Button>
+						</div>
+						<p v-if="cashPaymentMethods.length === 0 && !cashPaymentMethodsLoading" class="text-xs text-orange-700 mt-2">
+							{{ __('No Cash mode of payment is configured for this POS Profile.') }}
+						</p>
 					</div>
 
 					<div v-if="showSmsPaymentMatcher" class="mt-4 bg-white border border-blue-100 rounded-lg p-3">
@@ -406,6 +468,13 @@ const show = ref(props.modelValue)
 const loading = ref(false)
 const invoiceData = ref(null)
 const showSmsPaymentMatcher = ref(false)
+const showCashPaymentForm = ref(false)
+const cashPaymentMethodsLoading = ref(false)
+const cashPaymentMethods = ref([])
+const cashModeOfPayment = ref("")
+const cashPaymentAmount = ref(null)
+const cashReferenceNo = ref("")
+const reconcilingCashPayment = ref(false)
 const smsMatchLoading = ref(false)
 const smsMatchSearch = ref("")
 const smsPaymentMatches = ref([])
@@ -450,6 +519,18 @@ const selectedSmsTotal = computed(() => {
 	return selectedSmsPayments.value.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
 })
 
+const canReconcileCashPayment = computed(() => {
+	const amount = Number(cashPaymentAmount.value || 0)
+	const outstanding = Number(invoiceData.value?.outstanding_amount || 0)
+	return (
+		canCreatePaymentEntry.value &&
+		!reconcilingCashPayment.value &&
+		Boolean(cashModeOfPayment.value) &&
+		amount > 0 &&
+		amount <= outstanding + 0.01
+	)
+})
+
 watch(
 	() => props.modelValue,
 	(val) => {
@@ -466,6 +547,7 @@ watch(show, async (val) => {
 		// Clear data when closing
 		invoiceData.value = null
 		resetSmsPaymentMatcher()
+		resetCashPaymentForm()
 	} else {
 		// Ensure dialog appears above other dialogs
 		await nextTick()
@@ -498,11 +580,15 @@ async function loadInvoiceDetails() {
 		invoiceData.value = result
 		if (!canCreatePaymentEntry.value) {
 			resetSmsPaymentMatcher()
+			resetCashPaymentForm()
+		} else {
+			cashPaymentAmount.value = Number(result.outstanding_amount || 0)
 		}
 	} catch (error) {
 		log.error("Error loading invoice details:", error)
 		invoiceData.value = null
 		resetSmsPaymentMatcher()
+		resetCashPaymentForm()
 	} finally {
 		loading.value = false
 	}
@@ -523,6 +609,80 @@ function resetSmsPaymentMatcher() {
 	if (smsSearchTimer) {
 		clearTimeout(smsSearchTimer)
 		smsSearchTimer = null
+	}
+}
+
+function resetCashPaymentForm() {
+	showCashPaymentForm.value = false
+	cashPaymentMethodsLoading.value = false
+	cashPaymentMethods.value = []
+	cashModeOfPayment.value = ""
+	cashPaymentAmount.value = null
+	cashReferenceNo.value = ""
+	reconcilingCashPayment.value = false
+}
+
+async function toggleCashPaymentForm() {
+	if (!canCreatePaymentEntry.value) return
+	showCashPaymentForm.value = !showCashPaymentForm.value
+	if (showCashPaymentForm.value) {
+		cashPaymentAmount.value = Number(invoiceData.value?.outstanding_amount || 0)
+		await loadCashPaymentMethods()
+	}
+}
+
+async function loadCashPaymentMethods() {
+	if (!props.posProfile || cashPaymentMethods.value.length > 0) return
+
+	cashPaymentMethodsLoading.value = true
+	try {
+		const methods = await call("pos_next.api.pos_profile.get_payment_methods", {
+			pos_profile: props.posProfile,
+		})
+		cashPaymentMethods.value = (methods || []).filter((method) => {
+			const type = String(method.type || "").toLowerCase()
+			const mode = String(method.mode_of_payment || "").toLowerCase()
+			return type === "cash" || mode.includes("cash")
+		})
+
+		const defaultMethod =
+			cashPaymentMethods.value.find((method) => method.default) ||
+			cashPaymentMethods.value[0]
+		cashModeOfPayment.value = defaultMethod?.mode_of_payment || ""
+	} catch (error) {
+		log.error("Error loading cash payment methods:", error)
+		showError(getErrorMessage(error) || __("Failed to load cash payment methods"))
+	} finally {
+		cashPaymentMethodsLoading.value = false
+	}
+}
+
+async function reconcileCashPayment() {
+	if (!canReconcileCashPayment.value || !invoiceData.value) return
+
+	reconcilingCashPayment.value = true
+	try {
+		const result = await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {
+			invoice_name: invoiceData.value.name,
+			payments: [
+				{
+					mode_of_payment: cashModeOfPayment.value,
+					amount: Number(cashPaymentAmount.value || 0),
+					reference_no: cashReferenceNo.value || null,
+				},
+			],
+		})
+
+		showSuccess(__("Cash payment reconciled"))
+		showCashPaymentForm.value = false
+		cashReferenceNo.value = ""
+		await loadInvoiceDetails()
+		emit("payment-reconciled", result)
+	} catch (error) {
+		log.error("Error reconciling cash payment:", error)
+		showError(getErrorMessage(error) || __("Failed to reconcile cash payment"))
+	} finally {
+		reconcilingCashPayment.value = false
 	}
 }
 
