@@ -575,11 +575,28 @@ def update_invoice(data):
 
         invoice_doc.disable_rounded_total = disable_rounded
 
+        incoming_payments = [
+            {
+                "mode_of_payment": payment.get("mode_of_payment"),
+                "amount": flt(payment.get("amount")),
+                "type": payment.get("type"),
+                "account": payment.get("account"),
+                "base_amount": flt(payment.get("base_amount")),
+            }
+            for payment in invoice_doc.get("payments", [])
+            if payment.get("mode_of_payment") and flt(payment.get("amount") or payment.get("base_amount")) > 0
+        ]
+
         # Populate missing fields (company, currency, accounts, etc.)
         invoice_doc.set_missing_values()
 
         # Calculate totals and apply discounts (with rounding disabled)
         invoice_doc.calculate_taxes_and_totals()
+
+        if incoming_payments:
+            invoice_doc.set("payments", [])
+            for payment in incoming_payments:
+                invoice_doc.append("payments", payment)
 
         normalize_pos_invoice_payments(invoice_doc, invoice_doc.company)
 
@@ -886,6 +903,72 @@ def get_invoice(invoice_name):
 		)
 
 	return invoice_data
+
+
+@frappe.whitelist()
+def diagnose_invoice_payments(invoice_name):
+	"""Inspect the stored payment rows Sales Register filters against."""
+	if not invoice_name:
+		frappe.throw(_("Invoice name is required"))
+
+	if not frappe.db.exists("Sales Invoice", invoice_name):
+		frappe.throw(_("Invoice {0} does not exist").format(invoice_name))
+
+	invoice = frappe.db.get_value(
+		"Sales Invoice",
+		invoice_name,
+		[
+			"name",
+			"docstatus",
+			"is_pos",
+			"posting_date",
+			"company",
+			"customer",
+			"grand_total",
+			"paid_amount",
+			"outstanding_amount",
+			"status",
+		],
+		as_dict=True,
+	)
+	sales_invoice_payments = frappe.get_all(
+		"Sales Invoice Payment",
+		filters={"parent": invoice_name},
+		fields=["name", "parent", "mode_of_payment", "amount", "base_amount", "account", "idx"],
+		order_by="idx asc",
+	)
+	payment_entries = frappe.db.sql(
+		"""
+		SELECT
+			pe.name,
+			pe.docstatus,
+			pe.mode_of_payment,
+			pe.paid_amount,
+			pe.received_amount,
+			pe.reference_no,
+			per.allocated_amount
+		FROM `tabPayment Entry` pe
+		INNER JOIN `tabPayment Entry Reference` per ON per.parent = pe.name
+		WHERE per.reference_doctype = 'Sales Invoice'
+			AND per.reference_name = %(invoice_name)s
+		ORDER BY pe.creation ASC
+		""",
+		{"invoice_name": invoice_name},
+		as_dict=True,
+	)
+
+	return {
+		"invoice": invoice,
+		"sales_invoice_payments": sales_invoice_payments,
+		"payment_entries": payment_entries,
+		"sales_register_modes": sorted(
+			{
+				payment.mode_of_payment
+				for payment in sales_invoice_payments
+				if payment.mode_of_payment
+			}
+		),
+	}
 
 
 @frappe.whitelist()
