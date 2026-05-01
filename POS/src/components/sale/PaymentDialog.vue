@@ -726,11 +726,11 @@
 						<div
 							v-for="(entry, index) in paymentEntries"
 							:key="index"
-							class="group flex items-center justify-between p-3 bg-white rounded-lg border-2 border-gray-200 hover:border-red-300 transition-all"
+							class="group flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 bg-white rounded-lg border-2 border-gray-200 hover:border-red-300 transition-all"
 						>
-							<div class="flex items-center gap-3">
+							<div class="flex items-center gap-3 min-w-0 flex-1">
 								<span class="text-xl">{{ getPaymentIcon(entry.type) }}</span>
-								<div>
+								<div class="min-w-0 flex-1">
 									<div class="font-medium text-sm text-gray-900">{{ entry.mode_of_payment }}</div>
 									<div class="text-xs text-gray-500">
 										{{ entry.is_mpesa
@@ -739,9 +739,17 @@
 											? __('SMS Enabler {0}', [entry.sms_transaction_id])
 											: entry.type }}
 									</div>
+									<input
+										v-model.trim="entry.reference_no"
+										type="text"
+										maxlength="140"
+										:placeholder="__('Reference code (optional)')"
+										:disabled="entry.is_mpesa || entry.is_sms_enabler"
+										class="mt-2 w-full sm:w-56 px-3 py-1.5 text-xs text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+									/>
 								</div>
 							</div>
-							<div class="flex items-center gap-4">
+							<div class="flex items-center justify-end gap-4">
 								<input
 									v-model.number="entry.amount"
 									type="number"
@@ -1931,6 +1939,7 @@ function quickAddPayment(method) {
 		mode_of_payment: method.mode_of_payment,
 		amount: Number.parseFloat(remainingAmount.value.toFixed(2)),
 		type: method.type || __('Cash'),
+		reference_no: "",
 	})
 
 	console.log('[PaymentDialog] Payment added, new entries:', paymentEntries.value)
@@ -1952,6 +1961,7 @@ function addCustomPayment(method, amount) {
 		mode_of_payment: method.mode_of_payment,
 		amount: amt,
 		type: method.type || __('Cash'),
+		reference_no: "",
 	})
 
 	console.log('[PaymentDialog] Payment added, new entries:', paymentEntries.value)

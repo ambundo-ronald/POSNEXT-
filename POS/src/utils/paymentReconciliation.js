@@ -34,14 +34,19 @@ export function buildBookkeepingPayments(paymentData) {
 
 	return payments
 		.filter((entry) => entry.amount > 0)
-		.map((entry) => ({
-			mode_of_payment: entry.mode_of_payment,
-			amount: entry.amount,
-			account: entry.account,
-			reference_no:
+		.map((entry) => {
+			const referenceNo = String(
 				entry.reference_no ||
-				entry.sms_transaction_id ||
-				entry.mpesa_transaction_id ||
-				null,
-		}))
+					entry.sms_transaction_id ||
+					entry.mpesa_transaction_id ||
+					"",
+			).trim()
+
+			return {
+				mode_of_payment: entry.mode_of_payment,
+				amount: entry.amount,
+				account: entry.account,
+				reference_no: referenceNo || null,
+			}
+		})
 }

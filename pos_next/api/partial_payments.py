@@ -617,8 +617,9 @@ def create_payment_entry(
     pe.paid_to_account_currency = invoice.currency
 
     # Set reference
+    reference_no = str(reference_no or "").strip()
     if reference_no:
-        pe.reference_no = str(reference_no)[:140]  # Limit length
+        pe.reference_no = reference_no[:140]  # Limit length
     else:
         pe.reference_no = f"POS-{invoice_name}"
 
@@ -1005,7 +1006,7 @@ def add_payment_to_partial_invoice(
 
             mode_of_payment = payment.get("mode_of_payment") or DEFAULT_PAYMENT_MODE
             payment_account = payment.get("account")
-            reference_no = payment.get("reference_no")
+            reference_no = str(payment.get("reference_no") or "").strip()
             cash_register_name = None
             is_cash_payment = get_mode_of_payment_type(mode_of_payment) == "cash"
 

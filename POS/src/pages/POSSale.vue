@@ -435,6 +435,7 @@
 			:pos-profile="shiftStore.profileName"
 			:current-warehouse="shiftStore.profileWarehouse"
 			@warehouse-changed="handleWarehouseChanged"
+			@default-customer-changed="handleDefaultCustomerChanged"
 		/>
 
 		<!-- Stock Lookup Dialog (Products Menu) -->
@@ -1802,6 +1803,15 @@ async function handlePaymentCompleted(paymentData) {
 function handleClearCart() {
 	if (cartStore.isEmpty) return
 	uiStore.showClearCartDialog = true
+}
+
+async function handleDefaultCustomerChanged(customer) {
+	const customerName = customer?.name || ""
+	shiftStore.updateProfileCustomer(customerName)
+
+	if (!cartStore.customer && customerName) {
+		await cartStore.setDefaultCustomer()
+	}
 }
 
 function confirmClearCart() {

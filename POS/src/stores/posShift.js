@@ -66,6 +66,11 @@ export const usePOSShiftStore = defineStore("posShift", () => {
 		return intervalId
 	}
 
+	function updateProfileCustomer(customer) {
+		if (!currentProfile.value) return
+		currentProfile.value.customer = customer || null
+	}
+
 	async function checkShift() {
 		await checkOpeningShift.fetch()
 		return hasOpenShift.value
@@ -91,6 +96,7 @@ export const usePOSShiftStore = defineStore("posShift", () => {
 		updateShiftDuration,
 		updateCurrentTime,
 		startTimers,
+		updateProfileCustomer,
 		checkShift,
 		checkOpeningShift,
 	}

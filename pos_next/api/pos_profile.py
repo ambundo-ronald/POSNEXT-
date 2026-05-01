@@ -266,6 +266,45 @@ def get_default_customer(pos_profile):
 
 
 @frappe.whitelist()
+def update_default_customer(pos_profile, customer=None):
+	"""Update the default customer configured on a POS Profile."""
+	if not pos_profile:
+		frappe.throw(_("POS Profile is required"))
+
+	customer = customer or ""
+	if isinstance(customer, dict):
+		customer = customer.get("value") or customer.get("name") or customer.get("label") or ""
+	customer = str(customer).strip()
+
+	has_access = frappe.db.exists(
+		"POS Profile User",
+		{"parent": pos_profile, "user": frappe.session.user},
+	)
+
+	if not has_access and not frappe.has_permission("POS Profile", "write"):
+		frappe.throw(_("You don't have permission to update this POS Profile"))
+
+	profile_doc = frappe.get_doc("POS Profile", pos_profile)
+
+	if customer and not frappe.db.exists("Customer", customer):
+		frappe.throw(_("Customer {0} does not exist").format(customer))
+
+	profile_doc.customer = customer or None
+	profile_doc.save(ignore_permissions=True)
+
+	if customer:
+		customer_doc = frappe.get_doc("Customer", customer)
+		return {
+			"success": True,
+			"customer": customer,
+			"customer_name": customer_doc.customer_name,
+			"customer_group": customer_doc.customer_group,
+		}
+
+	return {"success": True, "customer": None}
+
+
+@frappe.whitelist()
 def update_warehouse(pos_profile, warehouse):
 	"""Update warehouse in POS Profile"""
 	try:

@@ -91,6 +91,12 @@
 									{{ __('Sales Management') }}
 								</button>
 								<button
+									@click="activeTab = 'customer'"
+									:class="['px-4 py-2 text-sm font-medium rounded-md transition-all duration-200', activeTab === 'customer' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50']"
+								>
+									{{ __('Customer') }}
+								</button>
+								<button
 									@click="activeTab = 'pricing'"
 									:class="['px-4 py-2 text-sm font-medium rounded-md transition-all duration-200', activeTab === 'pricing' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50']"
 								>
@@ -615,6 +621,69 @@
 								</div>
 							</div>
 
+							<!-- Customer Settings Section -->
+							<div v-if="activeTab === 'customer'" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+								<div :class="customerSectionClasses.header">
+									<div class="flex items-center justify-between">
+										<div class="flex items-center gap-3">
+											<div :class="customerSectionClasses.iconContainer">
+												<svg :class="customerSectionClasses.icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m0-4a4 4 0 100-8 4 4 0 000 8zm8 0a4 4 0 100-8 4 4 0 000 8z"/>
+												</svg>
+											</div>
+											<div>
+												<h3 class="text-lg font-bold text-gray-900">{{ __('Customer Settings') }}</h3>
+												<p class="text-xs text-gray-600 mt-0.5">{{ __('Set the customer selected automatically when this POS Profile opens') }}</p>
+											</div>
+										</div>
+										<div :class="customerSectionClasses.badge">
+											<svg :class="customerSectionClasses.badgeIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="icons.checkCircle"/>
+											</svg>
+											<span :class="customerSectionClasses.badgeText">{{ __('Default Customer') }}</span>
+										</div>
+									</div>
+								</div>
+								<div class="p-6 flex flex-col gap-6">
+									<div :class="customerSubsectionClasses.container">
+										<div class="flex items-center gap-2 mb-4">
+											<svg :class="customerSubsectionClasses.icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="icons.info"/>
+											</svg>
+											<h4 class="text-sm font-semibold text-gray-900">{{ __('Default Sale Customer') }}</h4>
+										</div>
+										<label class="block">
+											<span class="mb-1 block text-xs font-medium text-gray-700">
+												{{ __('Default Customer') }}
+											</span>
+											<Autocomplete
+												v-model="defaultCustomer"
+												:options="customerOptions"
+												:loading="loadingCustomers"
+												@search="searchCustomers"
+												@select="selectDefaultCustomer"
+												:allow-custom-value="false"
+											/>
+											<span class="mt-1 block text-[11px] text-gray-500">
+												{{ __('This customer is preselected for new sales. Cashiers can still change or remove the customer during the sale.') }}
+											</span>
+										</label>
+										<div v-if="defaultCustomer" class="mt-3 flex items-center justify-between rounded border border-blue-100 bg-white p-3">
+											<div class="text-xs text-gray-600">
+												<span class="font-medium text-gray-900">{{ defaultCustomerLabel }}</span>
+											</div>
+											<button
+												type="button"
+												class="rounded border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+												@click="clearDefaultCustomer"
+											>
+												{{ __('Clear') }}
+											</button>
+										</div>
+									</div>
+								</div>
+							</div>
+
 							<!-- Price List Mapping Section -->
 							<div v-if="activeTab === 'pricing'" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
 								<div :class="pricingStrategyClasses.header">
@@ -688,7 +757,11 @@ const props = defineProps({
 	currentWarehouse: String,
 })
 
-const emit = defineEmits(["update:modelValue", "warehouse-changed"])
+const emit = defineEmits([
+	"update:modelValue",
+	"warehouse-changed",
+	"default-customer-changed",
+])
 
 const show = ref(props.modelValue)
 
@@ -732,6 +805,11 @@ const modeOfPaymentOptions = ref([])
 const loadingModeOfPayments = ref(false)
 const userOptions = ref([])
 const loadingUsers = ref(false)
+const defaultCustomer = ref("")
+const defaultCustomerLabel = ref("")
+const originalDefaultCustomer = ref("")
+const customerOptions = ref([])
+const loadingCustomers = ref(false)
 
 // Stock Sync Settings (localStorage persisted)
 const stockSyncEnabled = ref(false)
@@ -757,6 +835,7 @@ const warehouseOptions = computed(() => {
 // Dynamic classes using configuration helpers (DRY principle)
 const stockSectionClasses = computed(() => getSectionHeaderClasses("purple"))
 const salesSectionClasses = computed(() => getSectionHeaderClasses("green"))
+const customerSectionClasses = computed(() => getSectionHeaderClasses("blue"))
 const pricingStrategyClasses = computed(() => getSectionHeaderClasses("amber"))
 const warehouseSubsectionClasses = computed(() => getSubsectionClasses("gray"))
 const stockPolicySubsectionClasses = computed(() =>
@@ -765,6 +844,7 @@ const stockPolicySubsectionClasses = computed(() =>
 const stockSyncSubsectionClasses = computed(() => getSubsectionClasses("indigo"))
 const pricingSubsectionClasses = computed(() => getSubsectionClasses("emerald"))
 const operationsSubsectionClasses = computed(() => getSubsectionClasses("teal"))
+const customerSubsectionClasses = computed(() => getSubsectionClasses("blue"))
 const smsReconciliationModeOptions = computed(() => [
 	{ label: __("Manual"), value: "Manual" },
 	{ label: __("Suggested"), value: "Suggested" },
@@ -986,6 +1066,64 @@ async function searchUsers(query = "") {
 	}
 }
 
+async function searchCustomers(query = "") {
+	loadingCustomers.value = true
+	try {
+		const result = await call("pos_next.api.customers.get_customers", {
+			search_term: query || "",
+			pos_profile: props.posProfile,
+			limit: 20,
+		})
+
+		customerOptions.value = (result?.message || result || []).map((row) => ({
+			label: row.customer_name ? `${row.customer_name} (${row.name})` : row.name,
+			value: row.name,
+		}))
+	} catch (error) {
+		log.error("Failed to search customers:", error)
+		customerOptions.value = []
+	} finally {
+		loadingCustomers.value = false
+	}
+}
+
+function clearDefaultCustomer() {
+	defaultCustomer.value = ""
+	defaultCustomerLabel.value = ""
+}
+
+function selectDefaultCustomer(option) {
+	defaultCustomer.value = option?.value || ""
+	defaultCustomerLabel.value = option?.label || defaultCustomer.value
+}
+
+async function loadDefaultCustomer() {
+	try {
+		const result = await call("pos_next.api.pos_profile.get_default_customer", {
+			pos_profile: props.posProfile,
+		})
+
+		defaultCustomer.value = result?.customer || ""
+		defaultCustomerLabel.value = result?.customer
+			? `${result.customer_name || result.customer} (${result.customer})`
+			: ""
+		originalDefaultCustomer.value = defaultCustomer.value
+
+		if (defaultCustomer.value) {
+			customerOptions.value = [
+				{
+					label: defaultCustomerLabel.value,
+					value: defaultCustomer.value,
+				},
+			]
+		}
+	} catch (error) {
+		log.error("Failed to load default customer:", error)
+		clearDefaultCustomer()
+		originalDefaultCustomer.value = ""
+	}
+}
+
 function normalizeCreditSaleUsers() {
 	if (!Array.isArray(settings.value.credit_sale_users)) {
 		settings.value.credit_sale_users = []
@@ -1058,11 +1196,14 @@ async function loadSettings() {
 		// Handle frappe-ui call response format { message: [...] }
 		warehousesList.value = warehousesData?.message || warehousesData || []
 
+		await loadDefaultCustomer()
+
 		// Load settings
 		settingsResource.reload()
 	} catch (error) {
 		log.error("Error loading warehouses:", error)
 		warehousesList.value = []
+		await loadDefaultCustomer()
 		// Still load settings even if warehouses fail
 		settingsResource.reload()
 	}
@@ -1077,6 +1218,7 @@ async function saveSettings() {
 	saving.value = true
 	const oldWarehouse = props.currentWarehouse
 	const warehouseChanged = selectedWarehouse.value !== oldWarehouse
+	const defaultCustomerChanged = defaultCustomer.value !== originalDefaultCustomer.value
 	const negativeStockChanged = originalAllowNegativeStock.value !== settings.value.allow_negative_stock
 	const taxInclusiveChanged = originalTaxInclusive.value !== null && originalTaxInclusive.value !== settings.value.tax_inclusive
 
@@ -1123,6 +1265,28 @@ async function saveSettings() {
 				// Emit event to parent to reload stock with new warehouse
 				emit("warehouse-changed", selectedWarehouse.value)
 			}
+		}
+
+		if (defaultCustomerChanged) {
+			const customerResult = await call(
+				"pos_next.api.pos_profile.update_default_customer",
+				{
+					pos_profile: props.posProfile,
+					customer: defaultCustomer.value || "",
+				},
+			)
+
+			originalDefaultCustomer.value = customerResult?.customer || ""
+			defaultCustomer.value = customerResult?.customer || ""
+			defaultCustomerLabel.value = customerResult?.customer
+				? `${customerResult.customer_name || customerResult.customer} (${customerResult.customer})`
+				: ""
+
+			emit("default-customer-changed", {
+				name: customerResult?.customer || "",
+				customer_name: customerResult?.customer_name || customerResult?.customer || "",
+				customer_group: customerResult?.customer_group || "",
+			})
 		}
 
 		// Detect and emit settings changes through event system
