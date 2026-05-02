@@ -1689,7 +1689,10 @@ async function handlePaymentCompleted(paymentData) {
 			// Get item codes from cart before clearing
 			const soldItemCodes = cartStore.invoiceItems.map(item => item.item_code)
 			const bookkeepingPayments = buildBookkeepingPayments(paymentData)
-			const shouldSettleWithPaymentEntries = Boolean(paymentData.is_partial_payment) && bookkeepingPayments.length > 0
+			const hasSmsEnablerPayments = smsEnablerPayments.length > 0
+			const shouldSettleWithPaymentEntries =
+				(Boolean(paymentData.is_partial_payment) && bookkeepingPayments.length > 0) ||
+				hasSmsEnablerPayments
 
 			const result = await cartStore.submitInvoice({
 				is_credit_sale: Boolean(paymentData.is_credit_sale),
@@ -1701,7 +1704,7 @@ async function handlePaymentCompleted(paymentData) {
 				const invoiceTotal = result.grand_total || result.total || 0
 				const paidAmount = paymentData.paid_amount || invoiceTotal
 
-				if (shouldSettleWithPaymentEntries && invoiceName !== __('Unknown')) {
+				if (shouldSettleWithPaymentEntries && bookkeepingPayments.length > 0 && invoiceName !== __('Unknown')) {
 					try {
 						await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {
 							invoice_name: invoiceName,

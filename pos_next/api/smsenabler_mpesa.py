@@ -708,7 +708,7 @@ def reconcile_invoice_with_sms_payments(invoice=None, sms_payments=None):
 
 		existing_payment_entry = payment.payment_entry or _find_payment_entry_for_sms(
 			invoice,
-			transaction_id=payment.transaction_id,
+			transaction_id=payment.transaction_id or payment.name,
 			amount=amount,
 		)
 
@@ -825,7 +825,7 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 		payment.mode_of_payment = payment.mode_of_payment or mode_of_payment
 		payment.payment_entry = payment.payment_entry or _find_payment_entry_for_sms(
 			invoice,
-			transaction_id=payment.transaction_id,
+			transaction_id=payment.transaction_id or payment.name,
 			amount=payment.amount,
 		)
 		payment.status = "Consumed"
