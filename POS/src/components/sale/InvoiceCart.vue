@@ -528,30 +528,30 @@
 									<div class="relative group/uom">
 										<button
 											type="button"
-											@click="toggleUomDropdown(item.item_code)"
-											:disabled="!item.item_uoms || item.item_uoms.length === 0"
+											@click="toggleUomDropdown(item)"
+											:disabled="!allowChangeUom || !item.item_uoms || item.item_uoms.length === 0"
 											:class="[
 												'h-6 sm:h-7 text-[10px] sm:text-xs font-bold rounded ps-2 pe-5 transition-all touch-manipulation flex items-center justify-center min-w-[45px]',
-												item.item_uoms && item.item_uoms.length > 0
+												allowChangeUom && item.item_uoms && item.item_uoms.length > 0
 													? 'bg-blue-500 text-white border border-blue-400 hover:bg-blue-600 active:scale-95 cursor-pointer'
 													: 'bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed opacity-60'
 											]"
-											:title="item.item_uoms && item.item_uoms.length > 0 ? __('Click to change unit') : __('Only one unit available')"
+											:title="allowChangeUom && item.item_uoms && item.item_uoms.length > 0 ? __('Click to change unit') : __('UOM change is disabled')"
 										>
 											{{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}
 										</button>
 										<svg
 											:class="[
 												'absolute end-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 pointer-events-none transition-transform',
-												openUomDropdown === item.item_code ? 'rotate-180' : '',
-												item.item_uoms && item.item_uoms.length > 0 ? 'text-white' : 'text-gray-400'
+												openUomDropdown === getCartLineKey(item) ? 'rotate-180' : '',
+												allowChangeUom && item.item_uoms && item.item_uoms.length > 0 ? 'text-white' : 'text-gray-400'
 											]"
 											fill="none" stroke="currentColor" viewBox="0 0 24 24"
 										>
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
 										</svg>
 										<div
-											v-if="openUomDropdown === item.item_code && item.item_uoms && item.item_uoms.length > 0"
+											v-if="allowChangeUom && openUomDropdown === getCartLineKey(item) && item.item_uoms && item.item_uoms.length > 0"
 											class="absolute top-full start-0 mt-0.5 bg-white border border-blue-300 rounded shadow-xl z-50 min-w-full overflow-hidden"
 										>
 											<button
@@ -770,6 +770,10 @@ const props = defineProps({
 		type: Array,
 		default: () => [],
 	},
+	allowChangeUom: {
+		type: Boolean,
+		default: false,
+	},
 })
 
 /**
@@ -790,7 +794,7 @@ const emit = defineEmits([
 	"show-coupons",       // () - Show available coupons
 	"show-offers",        // () - Show available offers dialog
 	"remove-offer",       // (offerId) - Remove applied offer
-	"update-uom",         // (itemCode, newUom) - Change item's unit of measure
+	"update-uom",         // (itemCode, newUom, currentUom?) - Change item's unit of measure
 	"edit-item",          // (item) - Open item edit dialog
 	"view-shift",         // () - View current shift details
 	"show-drafts",        // () - Show draft/held orders
@@ -1319,10 +1323,18 @@ function handleQuantityBlur(item) {
  * @param {String} newUom - New unit of measure (e.g., "Kg", "Box")
  */
 async function handleUomChange(item, newUom) {
-	await cartStore.changeItemUOM(item.item_code, newUom)
+	if (!props.allowChangeUom) {
+		return
+	}
+
+	const currentUom = item.uom || item.stock_uom
+	if (newUom === currentUom) {
+		openUomDropdown.value = null
+		return
+	}
+
 	openUomDropdown.value = null // Close dropdown after selection
-	// Also emit for parent component compatibility
-	emit("update-uom", item.item_code, newUom)
+	emit("update-uom", item.item_code, newUom, currentUom)
 }
 
 /**
@@ -1331,8 +1343,17 @@ async function handleUomChange(item, newUom) {
  *
  * @param {String} itemCode - Item code to toggle dropdown for
  */
-function toggleUomDropdown(itemCode) {
-	openUomDropdown.value = openUomDropdown.value === itemCode ? null : itemCode
+function getCartLineKey(item) {
+	return `${item.item_code}::${item.uom || item.stock_uom || ""}`
+}
+
+function toggleUomDropdown(item) {
+	if (!props.allowChangeUom || !item.item_uoms || item.item_uoms.length === 0) {
+		return
+	}
+
+	const lineKey = getCartLineKey(item)
+	openUomDropdown.value = openUomDropdown.value === lineKey ? null : lineKey
 }
 
 /**

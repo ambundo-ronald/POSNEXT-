@@ -612,10 +612,19 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		}
 	}
 
-	async function changeItemUOM(itemCode, newUom, priceList = selectedPriceList.value) {
+	async function changeItemUOM(itemCode, newUom, currentUom = null, priceList = selectedPriceList.value) {
 		try {
-			const cartItem = invoiceItems.value.find((i) => i.item_code === itemCode)
+			const cartIndex = invoiceItems.value.findIndex(
+				(i) =>
+					i.item_code === itemCode &&
+					(!currentUom || (i.uom || i.stock_uom) === currentUom),
+			)
+			const cartItem = cartIndex >= 0 ? invoiceItems.value[cartIndex] : null
 			if (!cartItem) return
+
+			if ((cartItem.uom || cartItem.stock_uom) === newUom) {
+				return
+			}
 
 			const itemDetails = await getItemDetailsResource.submit({
 				item_code: itemCode,
@@ -635,7 +644,21 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			cartItem.rate = itemDetails.price_list_rate || itemDetails.rate
 			cartItem.price_list_rate = itemDetails.price_list_rate
 
-			recalculateItem(cartItem)
+			const duplicateIndex = invoiceItems.value.findIndex(
+				(i, index) =>
+					index !== cartIndex &&
+					i.item_code === itemCode &&
+					(i.uom || i.stock_uom) === newUom,
+			)
+
+			if (duplicateIndex >= 0) {
+				const duplicateItem = invoiceItems.value[duplicateIndex]
+				duplicateItem.quantity += cartItem.quantity
+				recalculateItem(duplicateItem)
+				invoiceItems.value.splice(cartIndex, 1)
+			} else {
+				recalculateItem(cartItem)
+			}
 
 			// Rebuild cache after item update to ensure totals are accurate
 			rebuildIncrementalCache()

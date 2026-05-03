@@ -9,6 +9,7 @@
   "section_break_general",
   "allow_user_to_edit_additional_discount",
   "allow_user_to_edit_item_discount",
+  "allow_change_uom",
   "use_percentage_discount",
   "max_discount_allowed",
   "disable_rounded_total",
@@ -103,6 +104,13 @@
    "fieldtype": "Check",
    "label": "Allow Item Discount",
    "description": "Enable item-level discount in edit dialog"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_change_uom",
+   "fieldtype": "Check",
+   "label": "Allow Change of UOM",
+   "description": "Allow cashiers to change an item's unit of measure directly from the cart"
   },
   {
    "default": "0",
