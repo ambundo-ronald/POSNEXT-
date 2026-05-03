@@ -42,13 +42,20 @@ def get_stock_availability(item_code, warehouse):
 		# Include all child warehouses when a group warehouse is set
 		warehouses = frappe.db.get_descendants("Warehouse", warehouse) or []
 
-	rows = frappe.get_all(
-		"Bin",
-		fields=["sum(actual_qty) as actual_qty"],
-		filters={"item_code": item_code, "warehouse": ["in", warehouses]},
+	if not warehouses:
+		return 0.0
+
+	rows = frappe.db.sql(
+		"""
+		SELECT SUM(actual_qty) AS actual_qty
+		FROM `tabBin`
+		WHERE item_code = %s AND warehouse IN %s
+		""",
+		(item_code, warehouses),
+		as_dict=True,
 	)
 
-	return flt(rows[0].actual_qty) if rows else 0.0
+	return flt(rows[0].actual_qty) if rows and rows[0].actual_qty is not None else 0.0
 
 
 def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=None):
@@ -487,29 +494,32 @@ def get_item_variants(template_item, pos_profile, customer=None, customer_group=
 			warehouse=pos_profile_doc.warehouse,
 		)
 
-		# Get all variants of this template
-		# Apply company filter: show variants for specific company + global variants (empty company)
-		variant_filters = {"variant_of": template_item, "disabled": 0, "is_sales_item": 1}
+		conditions = ["variant_of = %s", "disabled = 0", "is_sales_item = 1"]
+		params = [template_item]
 
-		# Add company filter to show items for specific company + global items
+		# Apply company filter: show variants for specific company + global variants.
 		if pos_profile_doc.company:
-			variant_filters["ifnull(custom_company, '')"] = ["in", [pos_profile_doc.company, ""]]
+			conditions.append("(IFNULL(custom_company, '') IN (%s, ''))")
+			params.append(pos_profile_doc.company)
 
-		variants = frappe.get_all(
-			"Item",
-			filters=variant_filters,
-			fields=[
-				"name as item_code",
-				"item_name",
-				"stock_uom",
-				"image",
-				"is_stock_item",
-				"has_batch_no",
-				"has_serial_no",
-				"item_group",
-				"brand",
-				"custom_company",
-			],
+		variants = frappe.db.sql(
+			f"""
+			SELECT
+				name AS item_code,
+				item_name,
+				stock_uom,
+				image,
+				is_stock_item,
+				has_batch_no,
+				has_serial_no,
+				item_group,
+				brand,
+				custom_company
+			FROM `tabItem`
+			WHERE {" AND ".join(conditions)}
+			""",
+			params,
+			as_dict=True,
 		)
 
 		# If no variants found, return empty with helpful message
@@ -973,25 +983,12 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 			warehouse=pos_profile_doc.warehouse,
 		)
 
-		filters = {
-			"disabled": 0,
-			"is_sales_item": 1,  # Only show items with "Allow Sales" enabled
-			"ifnull(variant_of, '')": "",  # Exclude items that are variants of a template
-		}
+		conditions, base_params = _build_item_base_conditions(pos_profile_doc, item_group)
 
 		# IMPORTANT: Filtering logic explained:
 		# - Template items (has_variants=1) are shown → users select variants via dialog
 		# - Regular items (has_variants=0, variant_of is null) are shown → direct add to cart
 		# - Variant items (has_variants=0, variant_of is not null) are HIDDEN from main list
-
-		# Add company filter - show items for specific company + global items (empty company)
-		# Global items (custom_company is empty) are available to all companies
-		if pos_profile_doc.company:
-			filters["ifnull(custom_company, '')"] = ["in", [pos_profile_doc.company, ""]]
-
-		# Add item group filter if provided
-		if item_group:
-			filters["item_group"] = item_group
 
 		# Build search conditions with fuzzy word-order independent matching
 		if search_term and len(search_term.strip()) > 0:
@@ -1039,27 +1036,16 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 			items = frappe.db.sql(query, tuple(params), as_dict=1)
 		else:
 			# No search term - return all items with base filters
-			items = frappe.get_list(
-				"Item",
-				filters=filters,
-				fields=[
-					"name as item_code",
-					"item_name",
-					"description",
-					"stock_uom",
-					"image",
-					"is_stock_item",
-					"has_batch_no",
-					"has_serial_no",
-					"item_group",
-					"brand",
-					"has_variants",
-					"custom_company",
-					"disabled",
-				],
-				start=start,
-				page_length=limit,
-				order_by="item_name asc",
+			items = frappe.db.sql(
+				f"""
+				SELECT {ITEM_RESULT_COLUMNS}
+				FROM `tabItem`
+				WHERE {" AND ".join(conditions)}
+				ORDER BY item_name ASC
+				LIMIT %s OFFSET %s
+				""",
+				base_params + [limit, start],
+				as_dict=1,
 			)
 
 		# Prepare maps for enrichment
