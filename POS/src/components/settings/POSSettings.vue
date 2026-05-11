@@ -306,6 +306,11 @@
 												:label="__('Tax Inclusive')"
 												:description="__('When enabled, displayed prices include tax. When disabled, tax is calculated separately. Changes apply immediately to your cart when you save.')"
 											/>
+											<CheckboxField
+												v-model="settings.block_zero_price_sales"
+												:label="__('Block Zero Price Sales')"
+												:description="__('Prevent selling items when the selling price is 0.00 or has not been set.')"
+											/>
 											<div class="grid gap-3 md:grid-cols-2">
 												<label class="block">
 													<span class="mb-1 block text-xs font-medium text-gray-700">
@@ -801,6 +806,7 @@ const settings = ref({
 	silent_print: 0,
 	allow_negative_stock: 0,
 	tax_inclusive: 0,
+	block_zero_price_sales: 0,
 	retail_price_list: "",
 	wholesale_price_list: "",
 })

@@ -4,6 +4,14 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "section_break_shift_automation",
+  "enable_auto_shift_open",
+  "auto_shift_open_time",
+  "column_break_shift_automation",
+  "enable_auto_shift_close",
+  "auto_shift_close_time",
+  "last_auto_shift_open_date",
+  "last_auto_shift_close_date",
   "section_break_sms_enabler",
   "sms_enabler_enabled",
   "sms_enabler_source",
@@ -13,6 +21,57 @@
   "sms_enabler_sender_mappings"
  ],
  "fields": [
+  {
+   "fieldname": "section_break_shift_automation",
+   "fieldtype": "Section Break",
+   "label": "Shift Automation"
+  },
+  {
+   "default": "0",
+   "description": "Automatically open zero-balance POS shifts for enabled POS Profiles and their assigned users at the configured time.",
+   "fieldname": "enable_auto_shift_open",
+   "fieldtype": "Check",
+   "label": "Enable Auto Shift Opening"
+  },
+  {
+   "depends_on": "eval:doc.enable_auto_shift_open",
+   "description": "Local site time when POS Next should open shifts automatically.",
+   "fieldname": "auto_shift_open_time",
+   "fieldtype": "Time",
+   "label": "Auto Shift Open Time"
+  },
+  {
+   "fieldname": "column_break_shift_automation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Automatically close open POS shifts at the configured time using calculated expected amounts.",
+   "fieldname": "enable_auto_shift_close",
+   "fieldtype": "Check",
+   "label": "Enable Auto Shift Closing"
+  },
+  {
+   "depends_on": "eval:doc.enable_auto_shift_close",
+   "description": "Local site time when POS Next should close any open shifts.",
+   "fieldname": "auto_shift_close_time",
+   "fieldtype": "Time",
+   "label": "Auto Shift Close Time"
+  },
+  {
+   "fieldname": "last_auto_shift_open_date",
+   "fieldtype": "Date",
+   "hidden": 1,
+   "label": "Last Auto Shift Open Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_auto_shift_close_date",
+   "fieldtype": "Date",
+   "hidden": 1,
+   "label": "Last Auto Shift Close Date",
+   "read_only": 1
+  },
   {
    "fieldname": "section_break_sms_enabler",
    "fieldtype": "Section Break",

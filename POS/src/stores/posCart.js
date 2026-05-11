@@ -110,9 +110,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		addItemToInvoice(item, qty)
 	}
 
-	function clearCart() {
-		clearInvoiceCart()
-		customer.value = null
+	async function clearCart() {
+		await clearInvoiceCart()
 		appliedOffers.value = []
 		appliedCoupon.value = null
 		currentDraftId.value = null

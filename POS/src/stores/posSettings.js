@@ -44,6 +44,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allow_print_draft_invoices: 0,
 		// Pricing & Display
 		decimal_precision: "2",
+		block_zero_price_sales: 0,
 		retail_price_list: "",
 		wholesale_price_list: "",
 		// Customer Settings
@@ -166,6 +167,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	// Computed - Pricing & Display
 	const decimalPrecision = computed(
 		() => Number.parseInt(settings.value.decimal_precision) || 2,
+	)
+	const blockZeroPriceSales = computed(() =>
+		Boolean(settings.value.block_zero_price_sales),
 	)
 	const retailPriceList = computed(() => settings.value.retail_price_list || "")
 	const wholesalePriceList = computed(() => settings.value.wholesale_price_list || "")
@@ -323,6 +327,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			allow_free_batch_return: 0,
 			allow_print_draft_invoices: 0,
 			decimal_precision: "2",
+			block_zero_price_sales: 0,
 			retail_price_list: "",
 			wholesale_price_list: "",
 			allow_customer_purchase_order: 0,
@@ -435,6 +440,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 
 		// Computed - Pricing & Display
 		decimalPrecision,
+		blockZeroPriceSales,
 		retailPriceList,
 		wholesalePriceList,
 

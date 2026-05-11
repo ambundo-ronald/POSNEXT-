@@ -45,6 +45,7 @@
   "section_break_pricing",
   "decimal_precision",
   "tax_inclusive",
+  "block_zero_price_sales",
   "retail_price_list",
   "wholesale_price_list",
   "section_break_customer",
@@ -350,6 +351,13 @@
    "fieldtype": "Check",
    "label": "Tax Inclusive",
    "description": "Automatically set taxes as included in item prices. When enabled, displayed prices include tax amounts."
+  },
+  {
+   "default": "0",
+   "fieldname": "block_zero_price_sales",
+   "fieldtype": "Check",
+   "label": "Block Zero Price Sales",
+   "description": "Prevent selling items when the selling price is 0.00 or has not been set."
   },
   {
    "fieldname": "retail_price_list",

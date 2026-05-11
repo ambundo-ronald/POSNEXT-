@@ -815,7 +815,7 @@ export function useInvoice() {
 					throw detailedError
 				}
 
-				resetInvoice()
+				await resetInvoice()
 				return result
 			} catch (error) {
 				// Preserve original error object with all its properties
@@ -881,12 +881,14 @@ export function useInvoice() {
 			})
 
 			// Set the default customer if one is configured
-			if (result && result.customer) {
+			const defaultCustomer = result?.message || result
+
+			if (defaultCustomer && defaultCustomer.customer) {
 				// Create customer object matching the structure from customer selection
 				customer.value = {
-					name: result.customer,
-					customer_name: result.customer_name || result.customer,
-					customer_group: result.customer_group,
+					name: defaultCustomer.customer,
+					customer_name: defaultCustomer.customer_name || defaultCustomer.customer,
+					customer_group: defaultCustomer.customer_group,
 				}
 			}
 		} catch (error) {
@@ -899,7 +901,7 @@ export function useInvoice() {
 	 * Resets the invoice to a clean state.
 	 * If a POS Profile is active and has a default customer, it will be pre-selected.
 	 */
-	function resetInvoice() {
+	async function resetInvoice() {
 		invoiceItems.value = []
 		payments.value = []
 		draftInvoiceName.value = null
@@ -913,7 +915,7 @@ export function useInvoice() {
 		_cachedTotalPaid.value = 0
 
 		// Set default customer from POS Profile if available
-		setDefaultCustomer()
+		await setDefaultCustomer()
 	}
 
 	/**
@@ -941,7 +943,7 @@ export function useInvoice() {
 		_cachedTotalPaid.value = 0
 
 		// Set default customer from POS Profile if available
-		setDefaultCustomer()
+		await setDefaultCustomer()
 
 		// Cleanup old draft invoices (older than 1 hour) in background
 		// Skip if offline to avoid network errors

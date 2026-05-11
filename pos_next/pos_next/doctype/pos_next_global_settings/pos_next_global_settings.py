@@ -8,6 +8,12 @@ from frappe.utils import cint
 
 class POSNextGlobalSettings(Document):
 	def validate(self):
+		if cint(self.get("enable_auto_shift_open")) and not self.get("auto_shift_open_time"):
+			frappe.throw("Auto Shift Open Time is required when automatic opening is enabled")
+
+		if cint(self.get("enable_auto_shift_close")) and not self.get("auto_shift_close_time"):
+			frappe.throw("Auto Shift Close Time is required when automatic closing is enabled")
+
 		if cint(self.get("sms_enabler_enabled")):
 			if not self.get("sms_enabler_token"):
 				self.sms_enabler_token = frappe.generate_hash(length=32)

@@ -447,6 +447,26 @@
 			:company="shiftStore.profileCompany"
 		/>
 
+		<!-- Dashboard -->
+		<POSDashboard
+			v-model="showDashboard"
+			:pos-profile="shiftStore.profileName"
+			:pos-opening-shift="shiftStore.currentShift?.name"
+			:warehouse="shiftStore.profileWarehouse"
+			:company="shiftStore.profileCompany"
+			:currency="shiftStore.profileCurrency"
+			:cart-total="cartStore.grandTotal"
+			:cart-item-count="cartStore.itemCount"
+			:is-offline="offlineStore.isOffline"
+		/>
+
+		<!-- Reports -->
+		<POSReports
+			v-model="showReports"
+			:pos-profile="shiftStore.profileName"
+			:currency="shiftStore.profileCurrency"
+		/>
+
 		<!-- Invoice Management -->
 		<InvoiceManagement
 			v-model="showInvoiceManagement"
@@ -709,6 +729,8 @@ import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailability
 import POSSettings from "@/components/settings/POSSettings.vue"
 import InvoiceManagement from "@/components/invoices/InvoiceManagement.vue"
 import InvoiceDetailDialog from "@/components/invoices/InvoiceDetailDialog.vue"
+import POSDashboard from "@/components/reports/POSDashboard.vue"
+import POSReports from "@/components/reports/POSReports.vue"
 import { useRealtimeStock } from "@/composables/useRealtimeStock"
 import { usePOSEvents } from "@/composables/usePOSEvents"
 import { useLocale } from "@/composables/useLocale"
@@ -806,6 +828,12 @@ const showPOSSettings = ref(false)
 
 // Stock Lookup dialog (Products menu)
 const showStockLookup = ref(false)
+
+// Dashboard dialog
+const showDashboard = ref(false)
+
+// Reports dialog
+const showReports = ref(false)
 
 // Invoice Management dialog
 const showInvoiceManagement = ref(false)
@@ -1359,6 +1387,8 @@ async function handleShiftOpened() {
 		await posSettingsStore.loadSettings(shiftStore.profileName)
 		// Load tax rules with tax_inclusive setting
 		await cartStore.loadTaxRules(shiftStore.profileName, posSettingsStore.settings)
+		// Apply POS Profile default customer for newly opened shifts
+		await cartStore.setDefaultCustomer()
 	}
 	showSuccess(__("You can now start making sales"))
 }
@@ -1537,9 +1567,35 @@ function handleCreateCustomer(searchValue) {
 	uiStore.showCreateCustomerDialog = true
 }
 
+function getZeroPriceCartItems() {
+	return cartStore.invoiceItems.filter((item) => {
+		const sellingPrice = Number.parseFloat(item.price_list_rate ?? item.rate ?? 0)
+		return sellingPrice <= 0
+	})
+}
+
+function showZeroPriceBlockedWarning() {
+	const blockedItems = getZeroPriceCartItems()
+	if (!blockedItems.length) return false
+
+	showWarning(
+		__("Selling price is 0.00 or has not been set for: {0}", [
+			blockedItems
+				.map((item) => item.item_name || item.item_code)
+				.filter(Boolean)
+				.join(", "),
+		]),
+	)
+	return true
+}
+
 function handleProceedToPayment() {
 	if (cartStore.isEmpty) {
 		showWarning(__("Please add items to cart before proceeding to payment"))
+		return
+	}
+
+	if (settingsStore.blockZeroPriceSales && showZeroPriceBlockedWarning()) {
 		return
 	}
 
@@ -1638,6 +1694,11 @@ async function handlePaymentCompleted(paymentData) {
 			showWarning(__("Please select a customer before proceeding"))
 			uiStore.showPaymentDialog = false
 			uiStore.showCustomerDialog = true
+			return
+		}
+
+		if (settingsStore.blockZeroPriceSales && showZeroPriceBlockedWarning()) {
+			uiStore.showPaymentDialog = false
 			return
 		}
 
@@ -1811,15 +1872,24 @@ function handleClearCart() {
 
 async function handleDefaultCustomerChanged(customer) {
 	const customerName = customer?.name || ""
+	const previousDefaultCustomer = shiftStore.profileCustomer
+	const selectedCustomer = cartStore.customer?.name || cartStore.customer
+
 	shiftStore.updateProfileCustomer(customerName)
 
-	if (!cartStore.customer && customerName) {
-		await cartStore.setDefaultCustomer()
+	if (customerName && (!selectedCustomer || selectedCustomer === previousDefaultCustomer || cartStore.isEmpty)) {
+		cartStore.setCustomer({
+			name: customerName,
+			customer_name: customer.customer_name || customerName,
+			customer_group: customer.customer_group || "",
+		})
+	} else if (!customerName && selectedCustomer === previousDefaultCustomer) {
+		cartStore.setCustomer(null)
 	}
 }
 
-function confirmClearCart() {
-	cartStore.clearCart()
+async function confirmClearCart() {
+	await cartStore.clearCart()
 	// Reset cart hash when cart is cleared
 	previousCartHash = ""
 	uiStore.showClearCartDialog = false
@@ -2114,7 +2184,7 @@ async function confirmClearCache() {
 
 async function handleEditOfflineInvoice(invoice) {
 	try {
-		cartStore.clearCart()
+		await cartStore.clearCart()
 
 		const invoiceData = invoice.data
 
@@ -2314,7 +2384,9 @@ function restoreBodyStyles() {
 
 // Management and Promotion handlers
 function handleManagementMenuClick(menuItem) {
-	if (menuItem === "promotions") {
+	if (menuItem === "dashboard") {
+		showDashboard.value = true
+	} else if (menuItem === "promotions") {
 		showPromotionManagement.value = true
 	} else if (menuItem === "settings") {
 		showPOSSettings.value = true
@@ -2327,6 +2399,8 @@ function handleManagementMenuClick(menuItem) {
 	} else if (menuItem === "products") {
 		// Open Stock Lookup dialog in search mode
 		showStockLookup.value = true
+	} else if (menuItem === "reports") {
+		showReports.value = true
 	}
 }
 

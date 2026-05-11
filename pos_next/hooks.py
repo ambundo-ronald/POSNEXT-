@@ -216,6 +216,11 @@ doc_events = {
 # ---------------
 
 scheduler_events = {
+	"cron": {
+		"*/5 * * * *": [
+			"pos_next.tasks.shift_automation.run_shift_automation",
+		],
+	},
 	"hourly": [
 		"pos_next.tasks.branding_monitor.monitor_branding_integrity",
 	],

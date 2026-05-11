@@ -276,6 +276,67 @@ def _should_block(pos_profile):
     return True
 
 
+def _should_block_zero_price_sales(pos_profile):
+    """Return true when POS Settings disallows zero or missing item prices."""
+    if not pos_profile:
+        return False
+
+    return bool(
+        cint(
+            frappe.db.get_value(
+                "POS Settings",
+                {"pos_profile": pos_profile, "enabled": 1},
+                "block_zero_price_sales",
+            )
+            or 0
+        )
+    )
+
+
+def _collect_zero_price_errors(items):
+    """Return invoice items whose selling price is zero or missing."""
+    errors = []
+    for item in items or []:
+        qty = flt(item.get("qty") or item.get("quantity") or 0)
+        if qty < 0:
+            continue
+
+        selling_price = flt(item.get("price_list_rate") or item.get("rate") or 0)
+        if selling_price <= 0:
+            errors.append(
+                {
+                    "item_code": item.get("item_code"),
+                    "item_name": item.get("item_name"),
+                }
+            )
+
+    return errors
+
+
+def _validate_zero_price_items(invoice_doc):
+    """Block invoices containing items with no configured selling price."""
+    if not _should_block_zero_price_sales(invoice_doc.get("pos_profile")):
+        return
+
+    errors = _collect_zero_price_errors(
+        [d.as_dict() for d in invoice_doc.get("items", [])]
+    )
+    if not errors:
+        return
+
+    item_labels = [
+        error.get("item_name") or error.get("item_code")
+        for error in errors
+        if error.get("item_name") or error.get("item_code")
+    ]
+    frappe.throw(
+        _("Selling price is 0.00 or has not been set for: {0}").format(
+            ", ".join(item_labels)
+        ),
+        title=_("Zero Selling Price Blocked"),
+    )
+
+
 def _validate_stock_on_invoice(invoice_doc):
     """Validate stock availability before submission."""
     if invoice_doc.doctype == "Sales Invoice" and not cint(
@@ -547,6 +608,8 @@ def update_invoice(data):
             # ERPNext will recalculate if needed, but preserving frontend rate
             # prevents rounding issues and ensures UI matches invoice
 
+        _validate_zero_price_items(invoice_doc)
+
         # Set invoice flags BEFORE calculations
         invoice_doc.is_pos = 1
         invoice_doc.update_stock = 1
@@ -773,6 +836,8 @@ def submit_invoice(invoice=None, data=None):
         # Validate stock availability only if negative stock is not allowed
         if not pos_settings_allow_negative:
             _validate_stock_on_invoice(invoice_doc)
+
+        _validate_zero_price_items(invoice_doc)
 
         # Save before submit
         invoice_doc.flags.ignore_permissions = True
@@ -1062,6 +1127,184 @@ def get_invoices(pos_profile, limit=100):
 			)
 
 	return invoices
+
+
+@frappe.whitelist()
+def get_sales_report(pos_profile, from_date=None, to_date=None, limit=10):
+	"""Return POS sales report metrics for the selected profile and date range."""
+	if not pos_profile:
+		frappe.throw(_("POS Profile is required"))
+
+	has_access = frappe.db.exists(
+		"POS Profile User",
+		{"parent": pos_profile, "user": frappe.session.user}
+	)
+
+	if not has_access and not frappe.has_permission("Sales Invoice", "read"):
+		frappe.throw(_("You don't have access to this POS Profile"))
+
+	from_date = from_date or nowdate()
+	to_date = to_date or nowdate()
+	limit = cint(limit) or 10
+
+	params = {
+		"pos_profile": pos_profile,
+		"from_date": from_date,
+		"to_date": to_date,
+		"limit": limit,
+	}
+
+	filters = """
+		si.pos_profile = %(pos_profile)s
+		AND si.docstatus = 1
+		AND si.is_pos = 1
+		AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
+	"""
+
+	summary = frappe.db.sql(
+		f"""
+		SELECT
+			COUNT(*) as invoice_count,
+			SUM(CASE WHEN si.is_return = 0 THEN 1 ELSE 0 END) as sale_count,
+			SUM(CASE WHEN si.is_return = 1 THEN 1 ELSE 0 END) as return_count,
+			COALESCE(SUM(CASE WHEN si.is_return = 0 THEN si.grand_total ELSE 0 END), 0) as gross_sales,
+			COALESCE(SUM(CASE WHEN si.is_return = 1 THEN ABS(si.grand_total) ELSE 0 END), 0) as returns_total,
+			COALESCE(SUM(si.grand_total), 0) as net_sales,
+			COALESCE(SUM(si.paid_amount), 0) as paid_amount,
+			COALESCE(SUM(si.outstanding_amount), 0) as outstanding_amount,
+			COALESCE(SUM(si.discount_amount), 0) as discount_amount
+		FROM `tabSales Invoice` si
+		WHERE {filters}
+		""",
+		params,
+		as_dict=True,
+	)[0]
+
+	items_summary = frappe.db.sql(
+		f"""
+		SELECT
+			COALESCE(SUM(sii.qty), 0) as quantity,
+			COALESCE(SUM(sii.amount), 0) as amount
+		FROM `tabSales Invoice` si
+		INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+		WHERE {filters}
+			AND si.is_return = 0
+		""",
+		params,
+		as_dict=True,
+	)[0]
+
+	top_items = frappe.db.sql(
+		f"""
+		SELECT
+			sii.item_code,
+			MAX(sii.item_name) as item_name,
+			COALESCE(SUM(sii.qty), 0) as quantity,
+			COALESCE(SUM(sii.amount), 0) as amount,
+			COUNT(DISTINCT si.name) as invoice_count
+		FROM `tabSales Invoice` si
+		INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+		WHERE {filters}
+			AND si.is_return = 0
+		GROUP BY sii.item_code
+		ORDER BY amount DESC
+		LIMIT %(limit)s
+		""",
+		params,
+		as_dict=True,
+	)
+
+	inline_payments = frappe.db.sql(
+		f"""
+		SELECT
+			sip.mode_of_payment,
+			COALESCE(SUM(sip.amount), 0) as amount,
+			COUNT(*) as count
+		FROM `tabSales Invoice` si
+		INNER JOIN `tabSales Invoice Payment` sip ON sip.parent = si.name
+		WHERE {filters}
+			AND sip.amount != 0
+		GROUP BY sip.mode_of_payment
+		""",
+		params,
+		as_dict=True,
+	)
+
+	payment_entries = frappe.db.sql(
+		f"""
+		SELECT
+			pe.mode_of_payment,
+			COALESCE(SUM(per.allocated_amount), 0) as amount,
+			COUNT(DISTINCT pe.name) as count
+		FROM `tabSales Invoice` si
+		INNER JOIN `tabPayment Entry Reference` per
+			ON per.reference_doctype = 'Sales Invoice'
+			AND per.reference_name = si.name
+		INNER JOIN `tabPayment Entry` pe ON pe.name = per.parent
+		WHERE {filters}
+			AND pe.docstatus = 1
+		GROUP BY pe.mode_of_payment
+		""",
+		params,
+		as_dict=True,
+	)
+
+	payment_map = {}
+	for row in list(inline_payments or []) + list(payment_entries or []):
+		mode = row.get("mode_of_payment") or _("Unspecified")
+		if mode not in payment_map:
+			payment_map[mode] = {"mode_of_payment": mode, "amount": 0, "count": 0}
+		payment_map[mode]["amount"] += flt(row.get("amount"))
+		payment_map[mode]["count"] += cint(row.get("count"))
+
+	payment_methods = sorted(
+		payment_map.values(),
+		key=lambda row: row.get("amount") or 0,
+		reverse=True,
+	)
+
+	recent_invoices = frappe.db.sql(
+		f"""
+		SELECT
+			si.name,
+			si.customer,
+			si.customer_name,
+			si.posting_date,
+			si.posting_time,
+			si.grand_total,
+			si.paid_amount,
+			si.outstanding_amount,
+			si.status,
+			si.is_return
+		FROM `tabSales Invoice` si
+		WHERE {filters}
+		ORDER BY si.posting_date DESC, si.posting_time DESC
+		LIMIT %(limit)s
+		""",
+		params,
+		as_dict=True,
+	)
+
+	return {
+		"from_date": from_date,
+		"to_date": to_date,
+		"summary": {
+			"invoice_count": cint(summary.get("invoice_count")),
+			"sale_count": cint(summary.get("sale_count")),
+			"return_count": cint(summary.get("return_count")),
+			"gross_sales": flt(summary.get("gross_sales")),
+			"returns_total": flt(summary.get("returns_total")),
+			"net_sales": flt(summary.get("net_sales")),
+			"paid_amount": flt(summary.get("paid_amount")),
+			"outstanding_amount": flt(summary.get("outstanding_amount")),
+			"discount_amount": flt(summary.get("discount_amount")),
+			"quantity": flt(items_summary.get("quantity")),
+			"items_total": flt(items_summary.get("amount")),
+		},
+		"payment_methods": payment_methods,
+		"top_items": top_items,
+		"recent_invoices": recent_invoices,
+	}
 
 
 # ==========================================
