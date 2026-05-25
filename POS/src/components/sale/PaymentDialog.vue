@@ -740,22 +740,23 @@
 											: entry.type }}
 									</div>
 									<input
-										v-model.trim="entry.reference_no"
+										:value="entry.reference_no"
 										type="text"
 										maxlength="140"
 										:placeholder="__('Reference code (optional)')"
-										:disabled="entry.is_mpesa || entry.is_sms_enabler"
+										:disabled="isPaymentEntryLocked(entry)"
 										class="mt-2 w-full sm:w-56 px-3 py-1.5 text-xs text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+										@input="updatePaymentReference(index, $event.target.value)"
 									/>
 								</div>
 							</div>
 							<div class="flex items-center justify-end gap-4">
 								<input
-									v-model.number="entry.amount"
+									:value="entry.amount"
 									type="number"
 									step="5"
 									min="0"
-									:disabled="entry.is_mpesa || entry.is_sms_enabler"
+									:disabled="isPaymentEntryLocked(entry)"
 									class="w-28 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 									@input="updatePaymentEntry(index, $event.target.value)"
 								/>
@@ -2024,10 +2025,31 @@ function removePaymentEntry(index) {
 	paymentEntries.value.splice(index, 1)
 }
 
+function isPaymentEntryLocked(entry) {
+	return Boolean(
+		(entry?.is_mpesa && entry?.mpesa_payment_name) ||
+		(entry?.is_sms_enabler && entry?.sms_payment_name),
+	)
+}
+
+function updatePaymentReference(index, value) {
+	const entry = paymentEntries.value[index]
+	if (!entry || isPaymentEntryLocked(entry)) {
+		return
+	}
+
+	entry.reference_no = String(value || "").trim()
+}
+
 function updatePaymentEntry(index, value) {
+	const entry = paymentEntries.value[index]
+	if (!entry || isPaymentEntryLocked(entry)) {
+		return
+	}
+
 	const amt = Number.parseFloat(value)
-	if (amt && amt > 0) {
-		paymentEntries.value[index].amount = amt
+	if (Number.isFinite(amt) && amt >= 0) {
+		entry.amount = amt
 	}
 }
 
