@@ -98,8 +98,15 @@
 									type="number"
 									min="0"
 									step="0.01"
-									readonly
-									class="w-full h-10 border border-gray-300 rounded-lg ps-16 pe-3 text-sm font-semibold bg-gray-50 cursor-not-allowed"
+									:readonly="!settingsStore.allowEditRate"
+									:class="[
+										'w-full h-10 border border-gray-300 rounded-lg ps-16 pe-3 text-sm font-semibold',
+										settingsStore.allowEditRate
+											? 'bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+											: 'bg-gray-50 cursor-not-allowed'
+									]"
+									@input="handleRateInput"
+									@blur="handleRateBlur"
 								/>
 							</div>
 						</div>
@@ -422,19 +429,36 @@ function decrementQuantity() {
 function handleQuantityInput() {
 	// Allow any value during typing, just recalculate totals
 	// Don't validate or reset - let user type freely
-	if (localQuantity.value > 0 && !isNaN(localQuantity.value)) {
+	if (localQuantity.value > 0 && !Number.isNaN(localQuantity.value)) {
 		calculateTotals()
 	}
 }
 
 function handleQuantityBlur() {
 	// Validate and fix the quantity when user is done editing (leaves the field)
-	if (!localQuantity.value || localQuantity.value <= 0 || isNaN(localQuantity.value)) {
+	if (!localQuantity.value || localQuantity.value <= 0 || Number.isNaN(localQuantity.value)) {
 		// If invalid, reset to 1
 		localQuantity.value = 1
 	} else {
 		// Round to 4 decimal places for consistency
 		localQuantity.value = Math.round(localQuantity.value * 10000) / 10000
+	}
+	calculateTotals()
+}
+
+function handleRateInput() {
+	if (settingsStore.allowEditRate && localRate.value >= 0 && !Number.isNaN(localRate.value)) {
+		calculateTotals()
+	}
+}
+
+function handleRateBlur() {
+	if (!settingsStore.allowEditRate) return
+
+	if (localRate.value === "" || localRate.value === null || localRate.value < 0 || Number.isNaN(localRate.value)) {
+		localRate.value = 0
+	} else {
+		localRate.value = Math.round(Number.parseFloat(localRate.value) * 100) / 100
 	}
 	calculateTotals()
 }

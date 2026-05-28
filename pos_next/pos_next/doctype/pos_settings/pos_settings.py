@@ -136,6 +136,19 @@ def _inject_credit_sale_access(settings):
 	return settings
 
 
+def get_profile_allow_edit_rate(pos_profile):
+	"""Return the standard POS Profile edit-rate flag when available."""
+	if not pos_profile:
+		return 0
+
+	try:
+		if not frappe.get_meta("POS Profile").has_field("allow_user_to_edit_rate"):
+			return 0
+		return cint(frappe.db.get_value("POS Profile", pos_profile, "allow_user_to_edit_rate") or 0)
+	except Exception:
+		return 0
+
+
 def is_credit_sale_allowed_for_user(pos_profile, user=None, settings=None):
 	user = user or frappe.session.user
 	if not pos_profile:
@@ -314,6 +327,8 @@ def get_pos_settings(pos_profile):
 	if not settings:
 		settings = create_default_settings(pos_profile)
 
+	settings["allow_user_to_edit_rate"] = cint(settings.get("allow_user_to_edit_rate")) or get_profile_allow_edit_rate(pos_profile)
+
 	# Inject the current global Stock Settings value for transparency
 	# This helps UI reflect the actual state even if multiple POS Settings exist
 	settings["_global_allow_negative_stock"] = cint(
@@ -410,6 +425,7 @@ def update_pos_settings(pos_profile, settings):
 		doc.insert()
 
 	result = doc.as_dict()
+	result["allow_user_to_edit_rate"] = cint(result.get("allow_user_to_edit_rate")) or get_profile_allow_edit_rate(pos_profile)
 	_inject_global_sms_enabler_settings(result)
 	return result
 

@@ -368,6 +368,11 @@
 												:description="__('Enable item-level discount in edit dialog')"
 											/>
 											<CheckboxField
+												v-model="settings.allow_user_to_edit_rate"
+												:label="__('Allow User to Edit Rate')"
+												:description="__('Allow cashiers to change the item rate in the edit dialog')"
+											/>
+											<CheckboxField
 												v-model="settings.allow_change_uom"
 												:label="__('Allow Change of UOM')"
 												:description="__('Allow cashiers to change item units directly from the cart')"
@@ -789,6 +794,7 @@ const settings = ref({
 	use_percentage_discount: 0,
 	allow_user_to_edit_additional_discount: 0,
 	allow_user_to_edit_item_discount: 1,
+	allow_user_to_edit_rate: 0,
 	allow_change_uom: 0,
 	disable_rounded_total: 1,
 	allow_credit_sale: 0,

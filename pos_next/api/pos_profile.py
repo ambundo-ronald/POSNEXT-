@@ -63,6 +63,7 @@ def get_pos_profile_data(pos_profile):
 def get_pos_settings(pos_profile):
 	"""Get POS Settings for a given POS Profile"""
 	from pos_next.pos_next.doctype.pos_settings.pos_settings import (
+		get_profile_allow_edit_rate,
 		get_global_sms_enabler_settings,
 		_inject_credit_sale_access,
 	)
@@ -83,6 +84,7 @@ def get_pos_settings(pos_profile):
 				"tax_inclusive",
 				"allow_user_to_edit_additional_discount",
 				"allow_user_to_edit_item_discount",
+				"allow_user_to_edit_rate",
 				"allow_change_uom",
 				"use_percentage_discount",
 				"max_discount_allowed",
@@ -108,6 +110,7 @@ def get_pos_settings(pos_profile):
 				"tax_inclusive": 0,
 				"allow_user_to_edit_additional_discount": 0,
 				"allow_user_to_edit_item_discount": 1,
+				"allow_user_to_edit_rate": 0,
 				"allow_change_uom": 0,
 				"use_percentage_discount": 0,
 				"max_discount_allowed": 0,
@@ -129,9 +132,14 @@ def get_pos_settings(pos_profile):
 			}
 			settings.update(get_global_sms_enabler_settings())
 			settings["pos_profile"] = pos_profile
+			settings["allow_user_to_edit_rate"] = get_profile_allow_edit_rate(pos_profile)
 			_inject_credit_sale_access(settings)
 			return settings
 
+		pos_settings["allow_user_to_edit_rate"] = (
+			int(pos_settings.get("allow_user_to_edit_rate") or 0)
+			or get_profile_allow_edit_rate(pos_profile)
+		)
 		pos_settings.update(get_global_sms_enabler_settings())
 		_inject_credit_sale_access(pos_settings)
 		return pos_settings
@@ -140,6 +148,7 @@ def get_pos_settings(pos_profile):
 		settings = {}
 		settings.update(get_global_sms_enabler_settings())
 		settings["pos_profile"] = pos_profile
+		settings["allow_user_to_edit_rate"] = get_profile_allow_edit_rate(pos_profile)
 		_inject_credit_sale_access(settings)
 		return settings
 

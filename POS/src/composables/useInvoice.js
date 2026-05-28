@@ -341,7 +341,9 @@ export function useInvoice() {
 			const oldTax = item.tax_amount || 0
 			const oldDiscount = item.discount_amount || 0
 
-			item.rate = Number.parseFloat(rate) || 0
+			const editedRate = Number.parseFloat(rate) || 0
+			item.rate = editedRate
+			item.price_list_rate = editedRate
 			recalculateItem(item)
 
 			// Update cache incrementally (new values - old values)
