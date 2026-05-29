@@ -636,11 +636,10 @@
 							v-for="method in paymentMethods"
 							:key="method.mode_of_payment"
 							@click="quickAddPayment(method)"
-							:disabled="remainingAmount === 0"
 							:class="[
 								'group relative p-4 rounded-xl border-2 transition-all text-start',
 								'hover:shadow-lg transform hover:-translate-y-0.5',
-								remainingAmount === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
+								'cursor-pointer',
 								'border-gray-200 hover:border-blue-400 bg-white hover:bg-blue-50'
 							]"
 						>
@@ -731,7 +730,21 @@
 							<div class="flex items-center gap-3 min-w-0 flex-1">
 								<span class="text-xl">{{ getPaymentIcon(entry.type) }}</span>
 								<div class="min-w-0 flex-1">
-									<div class="font-medium text-sm text-gray-900">{{ entry.mode_of_payment }}</div>
+									<select
+										v-if="!isPaymentEntryLocked(entry)"
+										v-model="entry.mode_of_payment"
+										@change="updatePaymentMethod(index, $event.target.value)"
+										class="w-full sm:w-56 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+									>
+										<option
+											v-for="method in paymentMethods"
+											:key="method.mode_of_payment"
+											:value="method.mode_of_payment"
+										>
+											{{ method.mode_of_payment }}
+										</option>
+									</select>
+									<div v-else class="font-medium text-sm text-gray-900">{{ entry.mode_of_payment }}</div>
 									<div class="text-xs text-gray-500">
 										{{ entry.is_mpesa
 											? __('POS M-Pesa {0}', [entry.mpesa_transaction_id])
@@ -752,17 +765,17 @@
 							</div>
 							<div class="flex items-center justify-end gap-4">
 								<input
-									:value="entry.amount"
+									v-model.number="entry.amount"
 									type="number"
-									step="5"
+									step="0.01"
 									min="0"
 									:disabled="isPaymentEntryLocked(entry)"
-									class="w-28 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-									@input="updatePaymentEntry(index, $event.target.value)"
+									class="w-32 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+									@blur="normalizePaymentAmount(index)"
 								/>
 								<button
 									@click="removePaymentEntry(index)"
-									class="opacity-0 group-hover:opacity-100 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all"
+									class="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all sm:opacity-0 sm:group-hover:opacity-100"
 								>
 									<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -1668,7 +1681,7 @@ const round2 = (val) => Number(Number(val).toFixed(2))
 
 const totalPaid = computed(() => {
 	const sum = paymentEntries.value.reduce(
-		(sum, entry) => sum + (entry.amount || 0),
+		(sum, entry) => sum + getPaymentAmount(entry),
 		0,
 	)
 	return round2(sum)
@@ -1751,12 +1764,16 @@ const changeAmount = computed(() => {
 })
 
 const canComplete = computed(() => {
+	const hasPositivePayment = paymentEntries.value.some(
+		(entry) => getPaymentAmount(entry) > 0,
+	)
+
 	// If partial payment is allowed, can complete with any amount > 0
 	if (props.allowPartialPayment) {
-		return totalPaid.value > 0 && paymentEntries.value.length > 0
+		return totalPaid.value > 0 && hasPositivePayment
 	}
 	// Otherwise require full payment
-	return remainingAmount.value === 0 && paymentEntries.value.length > 0
+	return remainingAmount.value === 0 && hasPositivePayment
 })
 
 const paymentButtonText = computed(() => {
@@ -1932,13 +1949,14 @@ function quickAddPayment(method) {
 		currentEntries: paymentEntries.value.length
 	})
 
-	if (remainingAmount.value === 0) return
-
 	lastSelectedMethod.value = method
+	const amount = remainingAmount.value > 0
+		? Number.parseFloat(remainingAmount.value.toFixed(2))
+		: 0
 
 	paymentEntries.value.push({
 		mode_of_payment: method.mode_of_payment,
-		amount: Number.parseFloat(remainingAmount.value.toFixed(2)),
+		amount,
 		type: method.type || __('Cash'),
 		reference_no: "",
 	})
@@ -2025,6 +2043,11 @@ function removePaymentEntry(index) {
 	paymentEntries.value.splice(index, 1)
 }
 
+function getPaymentAmount(entry) {
+	const amount = Number.parseFloat(entry?.amount)
+	return Number.isFinite(amount) && amount > 0 ? amount : 0
+}
+
 function isPaymentEntryLocked(entry) {
 	return Boolean(
 		(entry?.is_mpesa && entry?.mpesa_payment_name) ||
@@ -2041,21 +2064,43 @@ function updatePaymentReference(index, value) {
 	entry.reference_no = String(value || "").trim()
 }
 
-function updatePaymentEntry(index, value) {
+function updatePaymentMethod(index, modeOfPayment) {
 	const entry = paymentEntries.value[index]
 	if (!entry || isPaymentEntryLocked(entry)) {
 		return
 	}
 
-	const amt = Number.parseFloat(value)
-	if (Number.isFinite(amt) && amt >= 0) {
-		entry.amount = amt
+	const method = paymentMethods.value.find(
+		(method) => method.mode_of_payment === modeOfPayment,
+	)
+	if (method) {
+		entry.mode_of_payment = method.mode_of_payment
+		entry.type = method.type || __("Cash")
 	}
+}
+
+function normalizePaymentAmount(index) {
+	const entry = paymentEntries.value[index]
+	if (!entry || isPaymentEntryLocked(entry)) {
+		return
+	}
+
+	const amount = Number.parseFloat(entry.amount)
+	entry.amount = Number.isFinite(amount) && amount > 0 ? round2(amount) : 0
 }
 
 function clearAll() {
 	paymentEntries.value = []
 	customAmount.value = ""
+}
+
+function getValidPaymentEntries() {
+	return paymentEntries.value
+		.map((entry) => ({
+			...entry,
+			amount: getPaymentAmount(entry),
+		}))
+		.filter((entry) => entry.mode_of_payment && entry.amount > 0)
 }
 
 function completePayment() {
@@ -2074,15 +2119,16 @@ function completePayment() {
 	}
 
 	const isPartial = totalPaid.value < props.grandTotal
+	const validPaymentEntries = getValidPaymentEntries()
 
 	const paymentData = {
-		payments: paymentEntries.value,
+		payments: validPaymentEntries,
 		change_amount: changeAmount.value,
 		is_partial_payment: isPartial,
 		paid_amount: totalPaid.value,
 		outstanding_amount: isPartial ? remainingAmount.value : 0,
 		sales_team: selectedSalesPersons.value.length > 0 ? selectedSalesPersons.value : null,
-		mpesa_payments: paymentEntries.value
+		mpesa_payments: validPaymentEntries
 			.filter((entry) => entry.is_mpesa && entry.mpesa_payment_name)
 			.map((entry) => ({
 				name: entry.mpesa_payment_name,
@@ -2090,7 +2136,7 @@ function completePayment() {
 				amount: entry.amount,
 				mode_of_payment: entry.mode_of_payment,
 			})),
-		sms_enabler_payments: paymentEntries.value
+		sms_enabler_payments: validPaymentEntries
 			.filter((entry) => entry.is_sms_enabler && entry.sms_payment_name)
 			.map((entry) => ({
 				name: entry.sms_payment_name,
@@ -2115,7 +2161,7 @@ function formatCurrency(amount) {
 function getMethodTotal(methodName) {
 	return paymentEntries.value
 		.filter((entry) => entry.mode_of_payment === methodName)
-		.reduce((sum, entry) => sum + (entry.amount || 0), 0)
+		.reduce((sum, entry) => sum + getPaymentAmount(entry), 0)
 }
 
 
