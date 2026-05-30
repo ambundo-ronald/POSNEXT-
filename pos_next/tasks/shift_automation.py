@@ -17,14 +17,17 @@ def run_shift_automation():
 	current_date = nowdate()
 
 	if _is_due(settings, "enable_auto_shift_close", "auto_shift_close_time", "last_auto_shift_close_date"):
-		closed_count = close_open_shifts()
-		frappe.db.set_single_value(
-			GLOBAL_SETTINGS_DOCTYPE,
-			"last_auto_shift_close_date",
-			current_date,
-			update_modified=False,
+		result = close_open_shifts()
+		if result["failed"] == 0:
+			frappe.db.set_single_value(
+				GLOBAL_SETTINGS_DOCTYPE,
+				"last_auto_shift_close_date",
+				current_date,
+				update_modified=False,
+			)
+		frappe.logger("pos_next").info(
+			f"Auto shift close completed: {result['closed']} shift(s) closed, {result['failed']} failed"
 		)
-		frappe.logger("pos_next").info(f"Auto shift close completed: {closed_count} shift(s) closed")
 
 	if _is_due(settings, "enable_auto_shift_open", "auto_shift_open_time", "last_auto_shift_open_date"):
 		opened_count = open_configured_shifts()
@@ -67,23 +70,35 @@ def close_open_shifts():
 	)
 
 	closed_count = 0
+	failed_count = 0
 	for row in open_shifts:
 		try:
 			opening_doc = frappe.get_doc("POS Opening Shift", row.name)
 			closing_doc = make_closing_shift_from_opening(
 				json.dumps(opening_doc.as_dict(), default=str)
 			)
+			_set_sales_amounts_as_closing_amounts(closing_doc)
 			closing_doc.flags.ignore_permissions = True
 			closing_doc.save()
 			closing_doc.submit()
 			closed_count += 1
 		except Exception:
+			failed_count += 1
 			frappe.log_error(
 				title=f"Auto shift close failed for {row.name}",
 				message=frappe.get_traceback(),
 			)
 
-	return closed_count
+	return {"closed": closed_count, "failed": failed_count}
+
+
+def _set_sales_amounts_as_closing_amounts(closing_doc):
+	"""Auto-close using sales collected during the shift, excluding opening float."""
+	for payment in closing_doc.get("payment_reconciliation", []):
+		sales_amount = (payment.expected_amount or 0) - (payment.opening_amount or 0)
+		payment.opening_amount = 0
+		payment.expected_amount = sales_amount
+		payment.closing_amount = sales_amount
 
 
 def open_configured_shifts():
