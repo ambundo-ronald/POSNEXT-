@@ -753,13 +753,13 @@
 											: entry.type }}
 									</div>
 									<input
-										:value="entry.reference_no"
+										v-model="entry.reference_no"
 										type="text"
 										maxlength="140"
 										:placeholder="__('Reference code (optional)')"
-										:disabled="isPaymentEntryLocked(entry)"
+										:disabled="!canEditPaymentDetails(entry)"
 										class="mt-2 w-full sm:w-56 px-3 py-1.5 text-xs text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
-										@input="updatePaymentReference(index, $event.target.value)"
+										@blur="normalizePaymentReference(index)"
 									/>
 								</div>
 							</div>
@@ -767,10 +767,12 @@
 								<input
 									v-model.number="entry.amount"
 									type="number"
+									inputmode="decimal"
 									step="0.01"
 									min="0"
-									:disabled="isPaymentEntryLocked(entry)"
+									:disabled="!canEditPaymentDetails(entry)"
 									class="w-32 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+									@focus="$event.target.select()"
 									@blur="normalizePaymentAmount(index)"
 								/>
 								<button
@@ -2061,13 +2063,17 @@ function isPaymentEntryLocked(entry) {
 	)
 }
 
-function updatePaymentReference(index, value) {
+function canEditPaymentDetails(entry) {
+	return Boolean(entry) && !entry.is_customer_credit && !isPaymentEntryLocked(entry)
+}
+
+function normalizePaymentReference(index) {
 	const entry = paymentEntries.value[index]
-	if (!entry || isPaymentEntryLocked(entry)) {
+	if (!canEditPaymentDetails(entry)) {
 		return
 	}
 
-	entry.reference_no = String(value || "").trim()
+	entry.reference_no = String(entry.reference_no || "").trim()
 }
 
 function updatePaymentMethod(index, modeOfPayment) {
@@ -2087,7 +2093,7 @@ function updatePaymentMethod(index, modeOfPayment) {
 
 function normalizePaymentAmount(index) {
 	const entry = paymentEntries.value[index]
-	if (!entry || isPaymentEntryLocked(entry)) {
+	if (!canEditPaymentDetails(entry)) {
 		return
 	}
 
