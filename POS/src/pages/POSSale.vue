@@ -1751,10 +1751,7 @@ async function handlePaymentCompleted(paymentData) {
 			// Get item codes from cart before clearing
 			const soldItemCodes = cartStore.invoiceItems.map(item => item.item_code)
 			const bookkeepingPayments = buildBookkeepingPayments(paymentData)
-			const hasSmsEnablerPayments = smsEnablerPayments.length > 0
-			const shouldSettleWithPaymentEntries =
-				(Boolean(paymentData.is_partial_payment) && bookkeepingPayments.length > 0) ||
-				hasSmsEnablerPayments
+			const shouldSettleWithPaymentEntries = bookkeepingPayments.length > 0
 
 			const result = await cartStore.submitInvoice({
 				is_credit_sale: Boolean(paymentData.is_credit_sale),

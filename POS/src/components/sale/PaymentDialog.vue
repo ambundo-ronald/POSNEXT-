@@ -1560,8 +1560,14 @@ async function loadSmsEnablerPayments(search = smsEnablerSearch.value, options =
 			customer: props.customer?.name || props.customer,
 		})
 
-		smsEnablerPendingCount.value = result?.count || 0
-		smsEnablerPayments.value = result?.payments || []
+		const availablePayments = (result?.payments || []).filter(
+			(payment) =>
+				payment?.status === "Pending" &&
+				!payment?.sales_invoice &&
+				!payment?.payment_entry,
+		)
+		smsEnablerPendingCount.value = availablePayments.length
+		smsEnablerPayments.value = availablePayments
 
 		if (options.suggest && isAutoSmsReconciliation.value) {
 			autoApplySmsEnablerMatch()

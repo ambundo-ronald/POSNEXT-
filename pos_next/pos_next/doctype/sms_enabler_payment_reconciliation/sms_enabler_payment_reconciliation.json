@@ -1,0 +1,150 @@
+{
+ "actions": [],
+ "allow_copy": 1,
+ "creation": "2026-05-31 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "details_section",
+  "company",
+  "customer",
+  "invoice_name",
+  "filters_section",
+  "from_invoice_date",
+  "to_invoice_date",
+  "column_break_filters",
+  "from_sms_payment_date",
+  "to_sms_payment_date",
+  "sms_search",
+  "entries_section",
+  "invoices",
+  "column_break_entries",
+  "sms_payments"
+ ],
+ "fields": [
+  {
+   "fieldname": "details_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "invoice_name",
+   "fieldtype": "Link",
+   "label": "Invoice",
+   "options": "Sales Invoice"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "filters_section",
+   "fieldtype": "Section Break",
+   "label": "Filters"
+  },
+  {
+   "fieldname": "from_invoice_date",
+   "fieldtype": "Date",
+   "label": "From Invoice Date"
+  },
+  {
+   "fieldname": "to_invoice_date",
+   "fieldtype": "Date",
+   "label": "To Invoice Date"
+  },
+  {
+   "fieldname": "column_break_filters",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "from_sms_payment_date",
+   "fieldtype": "Date",
+   "label": "From SMS Payment Date"
+  },
+  {
+   "fieldname": "to_sms_payment_date",
+   "fieldtype": "Date",
+   "label": "To SMS Payment Date"
+  },
+  {
+   "fieldname": "sms_search",
+   "fieldtype": "Data",
+   "label": "SMS Search"
+  },
+  {
+   "fieldname": "entries_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "invoices",
+   "fieldtype": "Table",
+   "label": "Invoices",
+   "options": "SMS Enabler Reconciliation Invoice"
+  },
+  {
+   "fieldname": "column_break_entries",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sms_payments",
+   "fieldtype": "Table",
+   "label": "SMS Payments",
+   "options": "SMS Enabler Reconciliation Payment"
+  }
+ ],
+ "hide_toolbar": 1,
+ "icon": "icon-resize-horizontal",
+ "index_web_pages_for_search": 1,
+ "is_virtual": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-05-31 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "SMS Enabler Payment Reconciliation",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Accounts User",
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

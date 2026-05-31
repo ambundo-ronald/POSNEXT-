@@ -539,7 +539,11 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 	if pos_profile and not company:
 		company = frappe.db.get_value("POS Profile", pos_profile, "company")
 
-	filters = {"status": "Pending"}
+	filters = {
+		"status": "Pending",
+		"sales_invoice": ["in", ["", None]],
+		"payment_entry": ["in", ["", None]],
+	}
 	if company:
 		filters["company"] = ["in", [company, "", None]]
 
@@ -560,6 +564,9 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 			"received_at",
 			"raw_message",
 			"mode_of_payment",
+			"sales_invoice",
+			"payment_entry",
+			"status",
 		],
 		order_by="received_at desc",
 		limit_page_length=100,
