@@ -675,6 +675,10 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			if (!cartItem) {
 				throw new Error("Item not found in cart")
 			}
+			const canEditRate = Boolean(
+				settingsStore.allowEditRate ||
+					settingsStore.settings?.allow_user_to_edit_rate,
+			)
 
 			// If UOM changed, fetch new rate from server
 			if (updatedDetails.uom && updatedDetails.uom !== cartItem.uom) {
@@ -713,8 +717,10 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			if (updatedDetails.quantity !== undefined) {
 				cartItem.quantity = updatedDetails.quantity
 			}
-			if (updatedDetails.rate !== undefined && settingsStore.allowEditRate) {
-				const editedRate = Number.parseFloat(updatedDetails.rate) || 0
+			if ((updatedDetails.rate !== undefined || updatedDetails.price_list_rate !== undefined) && canEditRate) {
+				const editedRate = Number.parseFloat(
+					updatedDetails.price_list_rate ?? updatedDetails.rate,
+				) || 0
 				cartItem.rate = editedRate
 				cartItem.price_list_rate = editedRate
 			}
@@ -729,7 +735,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			}
 			// Update price_list_rate if provided (for UOM changes). Manual rate
 			// edits set price_list_rate above so recalculateItem preserves them.
-			if (updatedDetails.price_list_rate !== undefined && !settingsStore.allowEditRate) {
+			if (updatedDetails.price_list_rate !== undefined && !canEditRate) {
 				cartItem.price_list_rate = updatedDetails.price_list_rate
 			}
 			// Update serial numbers if provided

@@ -98,10 +98,10 @@
 									type="number"
 									min="0"
 									step="0.01"
-									:readonly="!settingsStore.allowEditRate"
+									:readonly="!canEditRate"
 									:class="[
 										'w-full h-10 border border-gray-300 rounded-lg ps-16 pe-3 text-sm font-semibold',
-										settingsStore.allowEditRate
+										canEditRate
 											? 'bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
 											: 'bg-gray-50 cursor-not-allowed'
 									]"
@@ -325,6 +325,13 @@ const availableUoms = computed(() => {
 })
 
 const currencySymbol = computed(() => getCurrencySymbol(props.currency))
+const canEditRate = computed(() =>
+	Boolean(
+		settingsStore.allowEditRate ||
+			settingsStore.settings?.allow_user_to_edit_rate ||
+			localItem.value?.allow_user_to_edit_rate,
+	),
+)
 
 // Initialize local state when item changes
 watch(
@@ -334,7 +341,7 @@ watch(
 			localItem.value = { ...newItem }
 			localQuantity.value = newItem.quantity || 1
 			localUom.value = newItem.uom || newItem.stock_uom || __("Nos")
-			localRate.value = newItem.rate || 0
+			localRate.value = Number.parseFloat(newItem.price_list_rate ?? newItem.rate ?? 0) || 0
 			localWarehouse.value =
 				newItem.warehouse || props.warehouses[0]?.name || ""
 
@@ -447,13 +454,13 @@ function handleQuantityBlur() {
 }
 
 function handleRateInput() {
-	if (settingsStore.allowEditRate && localRate.value >= 0 && !Number.isNaN(localRate.value)) {
+	if (canEditRate.value && localRate.value >= 0 && !Number.isNaN(localRate.value)) {
 		calculateTotals()
 	}
 }
 
 function handleRateBlur() {
-	if (!settingsStore.allowEditRate) return
+	if (!canEditRate.value) return
 
 	if (localRate.value === "" || localRate.value === null || localRate.value < 0 || Number.isNaN(localRate.value)) {
 		localRate.value = 0
@@ -557,11 +564,15 @@ function formatCurrency(amount) {
 }
 
 function updateItem() {
+	const editedRate = Number.parseFloat(localRate.value) || 0
 	const updatedItem = {
 		...localItem.value,
 		quantity: localQuantity.value,
 		uom: localUom.value,
-		rate: localRate.value,
+		rate: editedRate,
+		price_list_rate: canEditRate.value
+			? editedRate
+			: localItem.value.price_list_rate,
 		warehouse: localWarehouse.value,
 		discount_percentage:
 			discountType.value === "percentage" ? discountValue.value : 0,
