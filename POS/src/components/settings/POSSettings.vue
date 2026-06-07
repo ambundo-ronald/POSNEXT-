@@ -482,9 +482,15 @@
 												:options="smsReconciliationModeOptions"
 											/>
 											<CheckboxField
+												v-model="settings.global_sms_enabler_enabled"
+												:label="__('Use Global SMS Enabler')"
+												:description="__('When enabled, all POS Profiles share the global SMS inbox. Disable it to use a separate token and payment inbox for each POS Profile.')"
+											/>
+											<CheckboxField
+												v-if="!settings.global_sms_enabler_enabled"
 												v-model="settings.sms_enabler_enabled"
-												:label="__('Enable Site SMS Enabler')"
-												:description="__('Site-wide: one SMS Enabler device forwards messages to one POS Next webhook for all POS Profiles.')"
+												:label="__('Enable SMS Enabler for this POS Profile')"
+												:description="__('Only payments received with this profile token will be visible to this POS Profile.')"
 											/>
 											<div
 												v-if="settings.sms_enabler_enabled"
@@ -493,19 +499,25 @@
 												<div class="mb-3 flex items-start justify-between gap-3">
 													<div>
 														<h5 class="text-sm font-semibold text-emerald-950">
-															{{ __('Site SMS Enabler Webhook') }}
+															{{ settings.sms_enabler_is_global ? __('Global SMS Enabler Webhook') : __('POS Profile SMS Enabler Webhook') }}
 														</h5>
 														<p class="mt-1 text-xs leading-relaxed text-emerald-800">
-															{{ __('Use this same URL for SMS Enabler. Enter the token below in SMS Enabler Tag. Incoming messages become pending SMS payments for POS reconciliation.') }}
+															{{ settings.sms_enabler_is_global
+																? __('This token receives shared SMS payments for all POS Profiles.')
+																: __('Use this token in SMS Enabler Tag. Incoming payments will belong only to this POS Profile.') }}
 														</p>
 													</div>
 													<button
 														type="button"
 														class="rounded border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
-														:disabled="regeneratingSmsToken"
+														:disabled="regeneratingSmsToken || smsModeChanged"
 														@click="regenerateSmsEnablerToken"
 													>
-														{{ regeneratingSmsToken ? __('Generating...') : __('Regenerate Site Token') }}
+														{{ smsModeChanged
+															? __('Save Mode First')
+															: (regeneratingSmsToken
+																? __('Generating...')
+																: (settings.sms_enabler_is_global ? __('Regenerate Global Token') : __('Regenerate Profile Token'))) }}
 													</button>
 												</div>
 												<div class="grid gap-3 md:grid-cols-2">
@@ -751,7 +763,7 @@ import SelectField from "@/components/settings/SelectField.vue"
 import PriceListMapping from "@/components/settings/PriceListMapping.vue"
 import { useToast } from "@/composables/useToast"
 import { Autocomplete, Button, call, createResource } from "frappe-ui"
-import { computed, onMounted, onUnmounted, ref, watch } from "vue"
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue"
 import {
 	getSectionHeaderClasses,
 	getSubsectionClasses,
@@ -809,6 +821,14 @@ const settings = ref({
 	sms_enabler_webhook_url: "",
 	sms_enabler_is_global: 1,
 	sms_enabler_sender_mappings: [],
+	global_sms_enabler_enabled: 0,
+	global_sms_enabler_source: "SMS Enabler",
+	global_sms_enabler_token: "",
+	global_sms_enabler_sender_mappings: [],
+	profile_sms_enabler_enabled: 0,
+	profile_sms_enabler_source: "SMS Enabler",
+	profile_sms_enabler_token: "",
+	profile_sms_enabler_sender_mappings: [],
 	silent_print: 0,
 	allow_negative_stock: 0,
 	tax_inclusive: 0,
@@ -817,6 +837,11 @@ const settings = ref({
 	wholesale_price_list: "",
 })
 const regeneratingSmsToken = ref(false)
+const smsModeReady = ref(false)
+const savedGlobalSmsMode = ref(false)
+const smsModeChanged = computed(
+	() => Boolean(settings.value.global_sms_enabler_enabled) !== savedGlobalSmsMode.value,
+)
 const priceListOptions = ref([])
 const loadingPriceLists = ref(false)
 const modeOfPaymentOptions = ref([])
@@ -910,7 +935,9 @@ const settingsResource = createResource({
 	},
 	onSuccess(data) {
 		if (data) {
+			smsModeReady.value = false
 			Object.assign(settings.value, data)
+			savedGlobalSmsMode.value = Boolean(data.global_sms_enabler_enabled)
 			settings.value.pos_profile = props.posProfile
 			normalizeSmsSenderMappings()
 			normalizeCreditSaleUsers()
@@ -918,6 +945,9 @@ const settingsResource = createResource({
 			originalAllowNegativeStock.value = data.allow_negative_stock
 			// Update event system snapshot
 			updateSettingsSnapshot(settings.value)
+			nextTick(() => {
+				smsModeReady.value = true
+			})
 		}
 		loading.value = false
 	},
@@ -941,6 +971,34 @@ watch(
 watch(show, (val) => {
 	emit("update:modelValue", val)
 })
+
+watch(
+	() => settings.value.global_sms_enabler_enabled,
+	(newValue, oldValue) => {
+		if (!smsModeReady.value || Boolean(newValue) === Boolean(oldValue)) return
+
+		const oldPrefix = oldValue ? "global" : "profile"
+		settings.value[`${oldPrefix}_sms_enabler_enabled`] = settings.value.sms_enabler_enabled
+		settings.value[`${oldPrefix}_sms_enabler_source`] = settings.value.sms_enabler_source
+		settings.value[`${oldPrefix}_sms_enabler_token`] = settings.value.sms_enabler_token
+		settings.value[`${oldPrefix}_sms_enabler_sender_mappings`] = cloneSmsSenderMappings(
+			settings.value.sms_enabler_sender_mappings || [],
+		)
+
+		const newPrefix = newValue ? "global" : "profile"
+		settings.value.sms_enabler_enabled = newValue
+			? 1
+			: settings.value[`${newPrefix}_sms_enabler_enabled`] || 0
+		settings.value.sms_enabler_source =
+			settings.value[`${newPrefix}_sms_enabler_source`] || "SMS Enabler"
+		settings.value.sms_enabler_token =
+			settings.value[`${newPrefix}_sms_enabler_token`] || ""
+		settings.value.sms_enabler_sender_mappings = cloneSmsSenderMappings(
+			settings.value[`${newPrefix}_sms_enabler_sender_mappings`] || [],
+		)
+		settings.value.sms_enabler_is_global = newValue ? 1 : 0
+	},
+)
 
 // Watch for currentWarehouse prop changes and always sync
 watch(
@@ -993,12 +1051,19 @@ async function regenerateSmsEnablerToken() {
 	try {
 		const result = await call(
 			"pos_next.pos_next.doctype.pos_settings.pos_settings.regenerate_sms_enabler_token",
+			{
+				pos_profile: props.posProfile,
+			},
 		)
 		settings.value.sms_enabler_enabled = 1
 		settings.value.sms_enabler_token = result?.token || ""
 		settings.value.sms_enabler_webhook_url = result?.webhook_url || ""
-		settings.value.sms_enabler_is_global = 1
-		showSuccess(__("Site SMS Enabler token regenerated"))
+		settings.value.sms_enabler_is_global = result?.sms_enabler_is_global ? 1 : 0
+		showSuccess(
+			settings.value.sms_enabler_is_global
+				? __("Global SMS Enabler token regenerated")
+				: __("POS Profile SMS Enabler token regenerated"),
+		)
 	} catch (error) {
 		log.error("Failed to regenerate SMS Enabler token:", error)
 		showError(error.message || __("Could not regenerate SMS Enabler token"))
@@ -1181,6 +1246,10 @@ function normalizeSmsSenderMappings() {
 	}))
 }
 
+function cloneSmsSenderMappings(mappings) {
+	return (mappings || []).map((mapping) => ({ ...mapping }))
+}
+
 function addSmsSenderMapping() {
 	normalizeSmsSenderMappings()
 	settings.value.sms_enabler_sender_mappings.push({
@@ -1257,13 +1326,18 @@ async function saveSettings() {
 		)
 
 		if (result) {
+			smsModeReady.value = false
 			Object.assign(settings.value, result)
+			savedGlobalSmsMode.value = Boolean(result.global_sms_enabler_enabled)
 			settings.value.pos_profile = props.posProfile
 			normalizeSmsSenderMappings()
 			normalizeCreditSaleUsers()
 			// Update original values after successful save
 			originalAllowNegativeStock.value = result.allow_negative_stock
 			originalTaxInclusive.value = result.tax_inclusive
+			nextTick(() => {
+				smsModeReady.value = true
+			})
 		}
 
 		// Update warehouse in POS Profile if changed

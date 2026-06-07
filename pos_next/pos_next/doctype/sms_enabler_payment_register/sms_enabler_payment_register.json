@@ -20,6 +20,7 @@
   "account_reference",
   "section_linking",
   "company",
+  "pos_profile",
   "customer",
   "mode_of_payment",
   "sales_invoice",
@@ -116,6 +117,14 @@
    "in_standard_filter": 1,
    "label": "Company",
    "options": "Company"
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "POS Profile",
+   "options": "POS Profile",
+   "read_only": 1
   },
   {
    "fieldname": "customer",

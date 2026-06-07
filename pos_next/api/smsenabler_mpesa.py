@@ -13,9 +13,10 @@ import re
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate, now_datetime, nowdate
+from frappe.utils import cint, flt, getdate, now_datetime, nowdate
 
 from pos_next.pos_next.doctype.pos_settings.pos_settings import (
+	_serialize_sms_sender_mappings,
 	get_global_sms_enabler_settings,
 )
 
@@ -58,17 +59,41 @@ def _get_phone_mop_for_company(company):
 
 
 def _get_sms_enabler_settings(pos_profile=None):
-	settings = frappe._dict(get_global_sms_enabler_settings())
-	if not settings.get("sms_enabler_enabled"):
+	global_settings = frappe._dict(get_global_sms_enabler_settings())
+	if global_settings.get("sms_enabler_enabled"):
+		global_settings["pos_profile"] = pos_profile
+		global_settings["company"] = (
+			frappe.db.get_value("POS Profile", pos_profile, "company")
+			if pos_profile
+			else None
+		)
+		global_settings["sms_enabler_is_global"] = 1
+		return global_settings
+
+	if not pos_profile:
 		return None
 
-	settings["pos_profile"] = pos_profile
-	settings["company"] = (
-		frappe.db.get_value("POS Profile", pos_profile, "company")
-		if pos_profile
-		else None
+	name = frappe.db.get_value(
+		"POS Settings",
+		{"pos_profile": pos_profile, "enabled": 1, "sms_enabler_enabled": 1},
+		"name",
 	)
-	return settings
+	if not name:
+		return None
+
+	doc = frappe.get_doc("POS Settings", name)
+	return frappe._dict(
+		{
+			"name": doc.name,
+			"pos_profile": doc.pos_profile,
+			"company": frappe.db.get_value("POS Profile", doc.pos_profile, "company"),
+			"sms_enabler_enabled": cint(doc.sms_enabler_enabled),
+			"sms_enabler_token": doc.sms_enabler_token,
+			"sms_enabler_source": doc.sms_enabler_source or "SMS Enabler",
+			"sms_enabler_sender_mappings": _serialize_sms_sender_mappings(doc),
+			"sms_enabler_is_global": 0,
+		}
+	)
 
 
 def _resolve_mapped_mode_of_payment(sender=None, source=None, message=None, settings=None):
@@ -97,26 +122,33 @@ def _get_sms_enabler_settings_by_token(token):
 		and global_settings.get("sms_enabler_token")
 		and token == global_settings.get("sms_enabler_token")
 	):
+		global_settings["sms_enabler_is_global"] = 1
 		return global_settings
 
-	# Backward compatibility for sites that still have SMS Enabler configured on
-	# an older POS Settings record.
-	settings = frappe.db.get_value(
+	# Profile tokens become authoritative only after shared global mode is disabled.
+	if global_settings.get("sms_enabler_enabled"):
+		return None
+
+	matches = frappe.get_all(
 		"POS Settings",
-		{"enabled": 1, "sms_enabler_enabled": 1, "sms_enabler_token": token},
-		[
+		filters={"enabled": 1, "sms_enabler_enabled": 1, "sms_enabler_token": token},
+		fields=[
 			"name",
 			"pos_profile",
 			"sms_enabler_enabled",
 			"sms_enabler_token",
 			"sms_enabler_source",
 		],
-		as_dict=True,
+		limit_page_length=2,
 	)
-	if not settings:
+	if len(matches) != 1:
 		return None
 
+	settings = frappe._dict(matches[0])
+	doc = frappe.get_doc("POS Settings", settings.name)
 	settings["company"] = frappe.db.get_value("POS Profile", settings.pos_profile, "company")
+	settings["sms_enabler_sender_mappings"] = _serialize_sms_sender_mappings(doc)
+	settings["sms_enabler_is_global"] = 0
 	return settings
 
 
@@ -348,7 +380,7 @@ def check_sms_enabler_available(company=None, pos_profile=None):
 	if pos_profile and not (settings and settings.get("sms_enabler_enabled")):
 		return {
 			"available": False,
-			"reason": _("SMS Enabler is not enabled in POS Next Global Settings"),
+			"reason": _("SMS Enabler is not enabled for this POS Profile"),
 			"mode_of_payment": None,
 			"company": company,
 		}
@@ -379,23 +411,25 @@ def receive_sms(sender=None, message=None, received_at=None, source=None, compan
 		or frappe.get_request_header("X-SMS-Enabler-Token")
 		or frappe.get_request_header("X-SMS-Token")
 	)
-	expected_token = frappe.conf.get("sms_enabler_token")
+	global_settings = get_global_sms_enabler_settings()
+	expected_token = (
+		frappe.conf.get("sms_enabler_token")
+		if global_settings.get("sms_enabler_enabled")
+		else None
+	)
 	settings = None
 	if expected_token:
-		if token != expected_token:
+		if token == expected_token:
+			settings = frappe._dict(global_settings)
+			settings["sms_enabler_is_global"] = 1
+		else:
 			settings = _get_sms_enabler_settings_by_token(token)
 			if not settings:
 				frappe.throw(_("Invalid SMS Enabler token"), frappe.PermissionError)
 	else:
 		settings = _get_sms_enabler_settings_by_token(token)
 		if not settings:
-			global_settings = get_global_sms_enabler_settings()
-			legacy_configured_count = frappe.db.count(
-				"POS Settings",
-				{"enabled": 1, "sms_enabler_enabled": 1},
-			)
-			if global_settings.get("sms_enabler_enabled") or legacy_configured_count:
-				frappe.throw(_("Invalid SMS Enabler token"), frappe.PermissionError)
+			frappe.throw(_("Invalid SMS Enabler token"), frappe.PermissionError)
 
 	if settings:
 		company = company or settings.get("company")
@@ -420,6 +454,7 @@ def receive_sms(sender=None, message=None, received_at=None, source=None, compan
 	doc.raw_message = message
 	doc.received_at = received_at or now_datetime()
 	doc.company = company
+	doc.pos_profile = settings.get("pos_profile") if settings else None
 	doc.mode_of_payment = mapped_mode_of_payment
 	doc.status = "Pending" if parsed.get("parse_status") == "Parsed" else "Failed Parse"
 	doc.update(parsed)
@@ -538,6 +573,9 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 	amount = flt(amount or 0)
 	if pos_profile and not company:
 		company = frappe.db.get_value("POS Profile", pos_profile, "company")
+	profile_mode = not get_global_sms_enabler_settings().get("sms_enabler_enabled")
+	if profile_mode and not pos_profile:
+		return {"count": 0, "payments": []}
 
 	filters = {
 		"status": "Pending",
@@ -546,6 +584,8 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 	}
 	if company:
 		filters["company"] = ["in", [company, "", None]]
+	if profile_mode:
+		filters["pos_profile"] = pos_profile
 
 	total_count = frappe.db.count(SMS_REGISTER_DOCTYPE, filters)
 
@@ -564,6 +604,8 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 			"received_at",
 			"raw_message",
 			"mode_of_payment",
+			"company",
+			"pos_profile",
 			"sales_invoice",
 			"payment_entry",
 			"status",
@@ -602,12 +644,19 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 
 
 @frappe.whitelist()
-def get_sms_payments_for_payment_reconciliation(company=None, party_type=None, party=None, search=None):
+def get_sms_payments_for_payment_reconciliation(
+	company=None, party_type=None, party=None, search=None, pos_profile=None
+):
 	if party_type and party_type != "Customer":
 		return {"count": 0, "payments": []}
 
 	customer = party if party_type == "Customer" else None
-	result = get_sms_payments(company=company, search=search, customer=customer)
+	result = get_sms_payments(
+		company=company,
+		pos_profile=pos_profile,
+		search=search,
+		customer=customer,
+	)
 	formatted_payments = []
 
 	for payment in result.get("payments") or []:
@@ -704,6 +753,10 @@ def reconcile_invoice_with_sms_payments(invoice=None, sms_payments=None):
 			frappe.throw(_("SMS payment {0} is already {1}").format(name, payment.status))
 		if payment.company and payment.company != invoice_doc.company:
 			frappe.throw(_("SMS payment {0} belongs to company {1}").format(name, payment.company))
+		if payment.pos_profile and payment.pos_profile != invoice_doc.pos_profile:
+			frappe.throw(
+				_("SMS payment {0} belongs to POS Profile {1}").format(name, payment.pos_profile)
+			)
 
 		amount = flt(payment.amount)
 		if amount <= 0:
@@ -761,6 +814,7 @@ def reconcile_invoice_with_sms_payments(invoice=None, sms_payments=None):
 	for payment, selected_mode in selected_payments:
 		payment.customer = invoice_doc.customer
 		payment.company = invoice_doc.company
+		payment.pos_profile = payment.pos_profile or invoice_doc.pos_profile
 		payment.sales_invoice = invoice
 		payment.mode_of_payment = selected_mode
 		payment.payment_entry = linked_entries.get(payment.name) or payment.payment_entry
@@ -825,9 +879,14 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 		payment = frappe.get_doc(SMS_REGISTER_DOCTYPE, name)
 		if payment.status not in ("Pending", "Matched"):
 			frappe.throw(_("SMS payment {0} is already {1}").format(name, payment.status))
+		if payment.pos_profile and payment.pos_profile != invoice_doc.pos_profile:
+			frappe.throw(
+				_("SMS payment {0} belongs to POS Profile {1}").format(name, payment.pos_profile)
+			)
 
 		payment.customer = customer or invoice_doc.customer
 		payment.company = company
+		payment.pos_profile = payment.pos_profile or invoice_doc.pos_profile
 		payment.sales_invoice = invoice
 		payment.mode_of_payment = payment.mode_of_payment or mode_of_payment
 		payment.payment_entry = payment.payment_entry or _find_payment_entry_for_sms(

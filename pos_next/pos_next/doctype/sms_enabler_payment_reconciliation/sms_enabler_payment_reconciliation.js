@@ -8,6 +8,12 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 		}
 	},
 
+	company(frm) {
+		if (frm.doc.pos_profile) {
+			frm.set_value("pos_profile", "");
+		}
+	},
+
 	refresh(frm) {
 		frm.disable_save();
 		frm.set_df_property("invoices", "cannot_add_rows", true);
@@ -22,11 +28,17 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 	},
 
 	onload_post_render(frm) {
+		frm.set_query("pos_profile", () => ({
+			filters: {
+				company: frm.doc.company,
+			},
+		}));
 		frm.set_query("invoice_name", () => ({
 			filters: {
 				docstatus: 1,
 				outstanding_amount: [">", 0],
 				company: frm.doc.company,
+				pos_profile: frm.doc.pos_profile,
 				customer: frm.doc.customer,
 			},
 		}));
@@ -45,6 +57,7 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 				"pos_next.pos_next.doctype.sms_enabler_payment_reconciliation.sms_enabler_payment_reconciliation.get_outstanding_invoices",
 			args: {
 				company: frm.doc.company || "",
+				pos_profile: frm.doc.pos_profile || "",
 				customer: frm.doc.customer || "",
 				invoice_name: frm.doc.invoice_name || "",
 				from_date: frm.doc.from_invoice_date || "",
@@ -72,6 +85,7 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 				"pos_next.pos_next.doctype.sms_enabler_payment_reconciliation.sms_enabler_payment_reconciliation.get_unreconciled_sms_payments",
 			args: {
 				company: frm.doc.company || "",
+				pos_profile: frm.doc.pos_profile || "",
 				search: frm.doc.sms_search || "",
 				from_date: frm.doc.from_sms_payment_date || "",
 				to_date: frm.doc.to_sms_payment_date || "",

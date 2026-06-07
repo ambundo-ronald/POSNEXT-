@@ -7,6 +7,7 @@
  "field_order": [
   "details_section",
   "company",
+  "pos_profile",
   "customer",
   "invoice_name",
   "filters_section",
@@ -32,6 +33,13 @@
    "in_standard_filter": 1,
    "label": "Company",
    "options": "Company"
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "POS Profile",
+   "options": "POS Profile"
   },
   {
    "fieldname": "customer",

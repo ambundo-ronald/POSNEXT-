@@ -79,10 +79,10 @@
   },
   {
    "default": "0",
-   "description": "Receive forwarded payment SMS messages through the site-wide POS Next webhook.",
+   "description": "Use one shared SMS Enabler configuration for all POS Profiles. Disable this to use each profile's own token and payment inbox.",
    "fieldname": "sms_enabler_enabled",
    "fieldtype": "Check",
-   "label": "Enable SMS Enabler"
+   "label": "Use Global SMS Enabler"
   },
   {
    "default": "SMS Enabler",

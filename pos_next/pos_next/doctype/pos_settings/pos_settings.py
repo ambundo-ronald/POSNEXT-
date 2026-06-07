@@ -246,9 +246,11 @@ def update_global_sms_enabler_settings(settings):
 		return get_global_sms_enabler_settings()
 
 	current = get_global_sms_enabler_settings()
-	next_enabled = cint(settings.get("sms_enabler_enabled"))
-	next_source = settings.get("sms_enabler_source") or "SMS Enabler"
-	next_mappings = settings.get("sms_enabler_sender_mappings") or []
+	next_enabled = cint(settings.get("global_sms_enabler_enabled"))
+	next_source = settings.get("global_sms_enabler_source") or current.get("sms_enabler_source") or "SMS Enabler"
+	next_mappings = settings.get("global_sms_enabler_sender_mappings")
+	if next_mappings is None:
+		next_mappings = current.get("sms_enabler_sender_mappings") or []
 
 	if (
 		next_enabled == cint(current.get("sms_enabler_enabled"))
@@ -287,8 +289,77 @@ def update_global_sms_enabler_settings(settings):
 	return get_global_sms_enabler_settings()
 
 
-def _inject_global_sms_enabler_settings(settings):
-	settings.update(get_global_sms_enabler_settings())
+def _set_sms_sender_mappings(doc, mappings):
+	doc.set("sms_enabler_sender_mappings", [])
+	for mapping in mappings or []:
+		match_text = (mapping.get("match_text") or "").strip()
+		mode_of_payment = mapping.get("mode_of_payment")
+		if isinstance(mode_of_payment, dict):
+			mode_of_payment = mode_of_payment.get("value") or mode_of_payment.get("label")
+		if not match_text and not mode_of_payment:
+			continue
+		doc.append(
+			"sms_enabler_sender_mappings",
+			{
+				"enabled": cint(mapping.get("enabled", 1)),
+				"match_text": match_text,
+				"mode_of_payment": mode_of_payment,
+			},
+		)
+
+
+def _ensure_unique_profile_sms_token(doc):
+	if not cint(doc.get("sms_enabler_enabled")):
+		return
+
+	duplicate_filters = {
+		"enabled": 1,
+		"sms_enabler_enabled": 1,
+		"sms_enabler_token": doc.get("sms_enabler_token"),
+	}
+	if doc.name:
+		duplicate_filters["name"] = ["!=", doc.name]
+
+	if not doc.get("sms_enabler_token") or frappe.db.exists("POS Settings", duplicate_filters):
+		doc.sms_enabler_token = frappe.generate_hash(length=32)
+
+
+def _inject_sms_enabler_settings(settings):
+	"""Expose either the global or this POS Profile's SMS configuration."""
+	global_settings = get_global_sms_enabler_settings()
+	global_enabled = cint(global_settings.get("sms_enabler_enabled"))
+	pos_settings_name = settings.get("name")
+	profile_mappings = (
+		_serialize_sms_sender_mappings(frappe.get_doc("POS Settings", pos_settings_name))
+		if pos_settings_name
+		else []
+	)
+	settings["profile_sms_enabler_enabled"] = cint(settings.get("sms_enabler_enabled"))
+	settings["profile_sms_enabler_source"] = settings.get("sms_enabler_source") or "SMS Enabler"
+	settings["profile_sms_enabler_token"] = settings.get("sms_enabler_token") or ""
+	settings["profile_sms_enabler_sender_mappings"] = profile_mappings
+	settings["global_sms_enabler_enabled"] = global_enabled
+	settings["global_sms_enabler_source"] = global_settings.get("sms_enabler_source") or "SMS Enabler"
+	settings["global_sms_enabler_token"] = global_settings.get("sms_enabler_token") or ""
+	settings["global_sms_enabler_sender_mappings"] = global_settings.get("sms_enabler_sender_mappings") or []
+	settings["sms_enabler_is_global"] = global_enabled
+	settings["sms_enabler_webhook_url"] = get_sms_enabler_webhook_url()
+
+	if global_enabled:
+		settings.update(
+			{
+				"sms_enabler_enabled": 1,
+				"sms_enabler_source": global_settings.get("sms_enabler_source") or "SMS Enabler",
+				"sms_enabler_token": global_settings.get("sms_enabler_token") or "",
+				"sms_enabler_sender_mappings": global_settings.get("sms_enabler_sender_mappings") or [],
+			}
+		)
+	else:
+		settings["sms_enabler_enabled"] = cint(settings.get("sms_enabler_enabled"))
+		settings["sms_enabler_source"] = settings.get("sms_enabler_source") or "SMS Enabler"
+		settings["sms_enabler_token"] = settings.get("sms_enabler_token") or ""
+		settings["sms_enabler_sender_mappings"] = profile_mappings
+
 	_inject_credit_sale_access(settings)
 	return settings
 
@@ -334,7 +405,7 @@ def get_pos_settings(pos_profile):
 	settings["_global_allow_negative_stock"] = cint(
 		frappe.db.get_single_value("Stock Settings", "allow_negative_stock") or 0
 	)
-	_inject_global_sms_enabler_settings(settings)
+	_inject_sms_enabler_settings(settings)
 
 	return settings
 
@@ -348,7 +419,7 @@ def create_default_settings(pos_profile):
 	doc.insert()
 
 	settings = doc.as_dict()
-	_inject_global_sms_enabler_settings(settings)
+	_inject_sms_enabler_settings(settings)
 	return settings
 
 
@@ -370,18 +441,53 @@ def update_pos_settings(pos_profile, settings):
 	if not has_access and not frappe.has_permission("POS Settings", "write"):
 		frappe.throw(_("You don't have permission to update this POS Profile"))
 
-	update_global_sms_enabler_settings(settings)
+	global_settings = get_global_sms_enabler_settings()
+	requested_global_enabled = cint(
+		settings.get("global_sms_enabler_enabled", global_settings.get("sms_enabler_enabled"))
+	)
+	update_global_sms_enabler_settings(
+		{
+			"global_sms_enabler_enabled": requested_global_enabled,
+			"global_sms_enabler_source": (
+				settings.get("sms_enabler_source")
+				if requested_global_enabled
+				else global_settings.get("sms_enabler_source")
+			),
+			"global_sms_enabler_sender_mappings": (
+				settings.get("sms_enabler_sender_mappings")
+				if requested_global_enabled
+				else global_settings.get("sms_enabler_sender_mappings")
+			),
+		}
+	)
 
 	credit_sale_users = settings.get("credit_sale_users") or []
+	sms_sender_mappings = settings.get("sms_enabler_sender_mappings") or []
+	profile_sms_mode = not requested_global_enabled
 
 	# Remove transient values injected for the frontend.
 	settings = {
 		key: value
 		for key, value in settings.items()
 		if not key.startswith("_")
-		and key not in {"sms_enabler_webhook_url", "sms_enabler_is_global", "current_user", "credit_sale_allowed_for_user"}
-		and key not in SMS_ENABLER_FIELDS
+		and key not in {
+			"sms_enabler_webhook_url",
+			"sms_enabler_is_global",
+			"global_sms_enabler_enabled",
+			"global_sms_enabler_source",
+			"global_sms_enabler_token",
+			"global_sms_enabler_sender_mappings",
+			"profile_sms_enabler_enabled",
+			"profile_sms_enabler_source",
+			"profile_sms_enabler_token",
+			"profile_sms_enabler_sender_mappings",
+			"current_user",
+			"credit_sale_allowed_for_user",
+		}
+		and key != "sms_enabler_sender_mappings"
+		and key != "sms_enabler_token"
 		and key != "credit_sale_users"
+		and (profile_sms_mode or key not in SMS_ENABLER_FIELDS)
 	}
 
 	# Check if settings exist
@@ -390,6 +496,9 @@ def update_pos_settings(pos_profile, settings):
 	if existing:
 		doc = frappe.get_doc("POS Settings", existing)
 		doc.update(settings)
+		if profile_sms_mode:
+			_set_sms_sender_mappings(doc, sms_sender_mappings)
+			_ensure_unique_profile_sms_token(doc)
 		doc.set("credit_sale_users", [])
 		for row in credit_sale_users:
 			user = row.get("user")
@@ -409,6 +518,9 @@ def update_pos_settings(pos_profile, settings):
 		doc = frappe.new_doc("POS Settings")
 		doc.pos_profile = pos_profile
 		doc.update(settings)
+		if profile_sms_mode:
+			_set_sms_sender_mappings(doc, sms_sender_mappings)
+			_ensure_unique_profile_sms_token(doc)
 		for row in credit_sale_users:
 			user = row.get("user")
 			if isinstance(user, dict):
@@ -426,26 +538,43 @@ def update_pos_settings(pos_profile, settings):
 
 	result = doc.as_dict()
 	result["allow_user_to_edit_rate"] = cint(result.get("allow_user_to_edit_rate")) or get_profile_allow_edit_rate(pos_profile)
-	_inject_global_sms_enabler_settings(result)
+	_inject_sms_enabler_settings(result)
 	return result
 
 
 @frappe.whitelist()
 def regenerate_sms_enabler_token(pos_profile=None):
-	"""Rotate the site-wide SMS Enabler webhook token."""
+	"""Rotate the active global or POS Profile SMS Enabler webhook token."""
 	from frappe import _
 
-	if not frappe.has_permission(GLOBAL_SETTINGS_DOCTYPE, "write"):
-		frappe.throw(_("You don't have permission to update SMS Enabler settings"))
+	global_settings = get_global_sms_enabler_settings()
+	if cint(global_settings.get("sms_enabler_enabled")):
+		if not frappe.has_permission(GLOBAL_SETTINGS_DOCTYPE, "write"):
+			frappe.throw(_("You don't have permission to update SMS Enabler settings"))
 
-	doc = frappe.get_single(GLOBAL_SETTINGS_DOCTYPE)
-	doc.sms_enabler_enabled = 1
-	doc.sms_enabler_source = doc.get("sms_enabler_source") or "SMS Enabler"
-	doc.sms_enabler_token = frappe.generate_hash(length=32)
-	doc.save()
+		doc = frappe.get_single(GLOBAL_SETTINGS_DOCTYPE)
+		doc.sms_enabler_token = frappe.generate_hash(length=32)
+		doc.save()
+		is_global = 1
+	else:
+		if not pos_profile:
+			frappe.throw(_("POS Profile is required when global SMS Enabler is disabled"))
+
+		name = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "name")
+		if not name:
+			create_default_settings(pos_profile)
+			name = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "name")
+		doc = frappe.get_doc("POS Settings", name)
+		if not doc.has_permission("write"):
+			frappe.throw(_("You don't have permission to update this POS Profile"))
+		doc.sms_enabler_enabled = 1
+		doc.sms_enabler_source = doc.get("sms_enabler_source") or "SMS Enabler"
+		doc.sms_enabler_token = frappe.generate_hash(length=32)
+		doc.save()
+		is_global = 0
 
 	return {
 		"token": doc.sms_enabler_token,
 		"webhook_url": get_sms_enabler_webhook_url(),
-		"sms_enabler_is_global": 1,
+		"sms_enabler_is_global": is_global,
 	}

@@ -60,7 +60,9 @@ def _parse_names(value):
 
 
 @frappe.whitelist()
-def get_outstanding_invoices(company=None, customer=None, from_date=None, to_date=None, invoice_name=None):
+def get_outstanding_invoices(
+	company=None, pos_profile=None, customer=None, from_date=None, to_date=None, invoice_name=None
+):
 	filters = {
 		"docstatus": 1,
 		"is_return": 0,
@@ -68,6 +70,8 @@ def get_outstanding_invoices(company=None, customer=None, from_date=None, to_dat
 	}
 	if company:
 		filters["company"] = company
+	if pos_profile:
+		filters["pos_profile"] = pos_profile
 	if customer:
 		filters["customer"] = customer
 	if invoice_name:
@@ -98,7 +102,15 @@ def get_outstanding_invoices(company=None, customer=None, from_date=None, to_dat
 
 
 @frappe.whitelist()
-def get_unreconciled_sms_payments(company=None, search=None, from_date=None, to_date=None):
+def get_unreconciled_sms_payments(
+	company=None, pos_profile=None, search=None, from_date=None, to_date=None
+):
+	from pos_next.pos_next.doctype.pos_settings.pos_settings import get_global_sms_enabler_settings
+
+	profile_mode = not get_global_sms_enabler_settings().get("sms_enabler_enabled")
+	if profile_mode and not pos_profile:
+		return []
+
 	filters = {
 		"status": "Pending",
 		"sales_invoice": ["in", ["", None]],
@@ -106,6 +118,8 @@ def get_unreconciled_sms_payments(company=None, search=None, from_date=None, to_
 	}
 	if company:
 		filters["company"] = ["in", [company, "", None]]
+	if profile_mode:
+		filters["pos_profile"] = pos_profile
 	if from_date and to_date:
 		filters["received_at"] = ["between", [from_date, to_date]]
 	elif from_date:
@@ -127,6 +141,7 @@ def get_unreconciled_sms_payments(company=None, search=None, from_date=None, to_
 			"payer_phone",
 			"account_reference",
 			"company",
+			"pos_profile",
 			"mode_of_payment",
 			"raw_message",
 		],
@@ -232,6 +247,8 @@ def process_sms_enabler_reconciliation(invoice_names, sms_payment_names):
 			frappe.throw(_("All selected invoices must belong to the same customer."))
 		if invoice.company != company:
 			frappe.throw(_("All selected invoices must belong to the same company."))
+		if invoice.pos_profile != first_invoice.pos_profile:
+			frappe.throw(_("All selected invoices must belong to the same POS Profile."))
 		if invoice.currency != currency:
 			frappe.throw(_("All selected invoices must use the same currency."))
 		if invoice.debit_to != debit_to:
@@ -262,6 +279,12 @@ def process_sms_enabler_reconciliation(invoice_names, sms_payment_names):
 			frappe.throw(_("SMS payment {0} is already linked to Payment Entry {1}.").format(sms_payment.name, sms_payment.payment_entry))
 		if sms_payment.sales_invoice:
 			frappe.throw(_("SMS payment {0} is already linked to Sales Invoice {1}.").format(sms_payment.name, sms_payment.sales_invoice))
+		if sms_payment.pos_profile and sms_payment.pos_profile != first_invoice.pos_profile:
+			frappe.throw(
+				_("SMS payment {0} belongs to POS Profile {1}.").format(
+					sms_payment.name, sms_payment.pos_profile
+				)
+			)
 
 		amount_to_allocate = flt(sms_payment.amount)
 		if amount_to_allocate <= 0:
@@ -299,6 +322,7 @@ def process_sms_enabler_reconciliation(invoice_names, sms_payment_names):
 
 		sms_payment.customer = customer
 		sms_payment.company = company
+		sms_payment.pos_profile = sms_payment.pos_profile or first_invoice.pos_profile
 		sms_payment.sales_invoice = allocations[0]["invoice"]
 		sms_payment.mode_of_payment = mode_of_payment
 		sms_payment.payment_entry = payment_entry

@@ -26,6 +26,8 @@
   "sms_enabler_source",
   "column_break_sms_enabler",
   "sms_enabler_token",
+  "section_break_sms_sender_mapping",
+  "sms_enabler_sender_mappings",
   "enable_sales_persons",
   "section_break_display",
   "default_card_view",
@@ -226,6 +228,20 @@
    "label": "Webhook Token",
    "description": "Security token used by SMS Enabler when posting SMS messages to POS Next.",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_break_sms_sender_mapping",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "SMS Sender Mapping"
+  },
+  {
+   "description": "Map bank SMS senders to the Mode of Payment used for this POS Profile.",
+   "fieldname": "sms_enabler_sender_mappings",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Sender to Mode of Payment",
+   "options": "SMS Enabler Sender Mapping"
   },
   {
    "default": "Disabled",
