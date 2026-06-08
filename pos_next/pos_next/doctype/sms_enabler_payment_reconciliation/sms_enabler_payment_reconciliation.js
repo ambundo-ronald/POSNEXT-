@@ -20,6 +20,7 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 		frm.set_df_property("invoices", "cannot_delete_rows", true);
 		frm.set_df_property("sms_payments", "cannot_add_rows", true);
 		frm.set_df_property("sms_payments", "cannot_delete_rows", true);
+		set_allocation_status_formatter(frm);
 
 		frm.add_custom_button(__("Get Unreconciled Entries"), () => {
 			frm.trigger("fetch_entries");
@@ -101,6 +102,9 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 					row.payer_phone = payment.payer_phone || payment.sender;
 					row.transaction_id = payment.transaction_id;
 					row.amount = payment.amount;
+					row.original_amount = payment.original_amount;
+					row.allocated_amount = payment.allocated_amount;
+					row.allocation_status = payment.allocation_status;
 					row.mode_of_payment = payment.mode_of_payment;
 				}
 				frm.refresh_field("sms_payments");
@@ -189,4 +193,18 @@ function toggle_allocate_button(frm) {
 		});
 		button.addClass("btn-primary");
 	}
+}
+
+function set_allocation_status_formatter(frm) {
+	const field = frm.fields_dict.sms_payments?.grid?.get_field("allocation_status");
+	if (!field) {
+		return;
+	}
+
+	field.formatter = (value) => {
+		if (value === __("Partially Allocated") || value === "Partially Allocated") {
+			return `<span class="indicator-pill yellow">${__("Partially Allocated")}</span>`;
+		}
+		return `<span class="indicator-pill gray">${value || __("Unallocated")}</span>`;
+	};
 }

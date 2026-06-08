@@ -15,7 +15,11 @@ export function buildBookkeepingPayments(paymentData) {
 	let changeToApply = Number.parseFloat(paymentData?.change_amount || 0) || 0
 
 	const payments = entries
-		.filter((entry) => !entry.is_customer_credit)
+		.filter(
+			(entry) =>
+				!entry.is_customer_credit &&
+				!(entry.is_sms_enabler && entry.sms_payment_entry),
+		)
 		.map((entry) => ({
 			...entry,
 			amount: Number.parseFloat(entry.amount || 0) || 0,

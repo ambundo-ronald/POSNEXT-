@@ -328,7 +328,12 @@ async function handlePaymentCompleted(paymentData) {
 		const smsEnablerPayments = Array.isArray(paymentData.sms_enabler_payments)
 			? paymentData.sms_enabler_payments
 			: []
-		const bookkeepingPayments = buildBookkeepingPayments(paymentData)
+		const bookkeepingPayments = buildBookkeepingPayments({
+			...paymentData,
+			payments: (paymentData.payments || []).filter(
+				(entry) => !entry.is_sms_enabler,
+			),
+		})
 		const result = await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {
 			invoice_name: selectedInvoice.value.name,
 			payments: bookkeepingPayments,

@@ -1,5 +1,15 @@
 frappe.ui.form.on("SMS Enabler Payment Register", {
 	refresh(frm) {
+		const can_assign_profile =
+			frm.doc.status === "Pending" &&
+			!frm.doc.pos_profile &&
+			!frm.doc.payment_entry
+
+		frm.set_df_property("pos_profile", "read_only", !can_assign_profile)
+		frm.set_query("pos_profile", () => ({
+			filters: frm.doc.company ? { company: frm.doc.company } : {},
+		}))
+
 		if (frm.is_new() || frm.doc.status === "Consumed" || frm.doc.payment_entry) {
 			return
 		}

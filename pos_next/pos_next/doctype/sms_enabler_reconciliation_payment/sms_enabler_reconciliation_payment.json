@@ -11,7 +11,10 @@
   "payer_name",
   "payer_phone",
   "transaction_id",
+  "original_amount",
+  "allocated_amount",
   "amount",
+  "allocation_status",
   "mode_of_payment"
  ],
  "fields": [
@@ -55,10 +58,31 @@
    "read_only": 1
   },
   {
+   "fieldname": "original_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Original Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "allocated_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Allocated",
+   "read_only": 1
+  },
+  {
    "fieldname": "amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
-   "label": "Amount",
+   "label": "Available",
+   "read_only": 1
+  },
+  {
+   "fieldname": "allocation_status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Allocation Status",
    "read_only": 1
   },
   {

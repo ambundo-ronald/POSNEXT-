@@ -591,7 +591,7 @@
 												{{ payment.payer_name || payment.source || __('Unknown') }}
 											</div>
 											<div class="text-xs font-bold text-emerald-700">
-												{{ formatCurrency(payment.amount) }}
+												{{ formatCurrency(payment.available_amount || payment.amount) }}
 											</div>
 										</div>
 										<div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
@@ -599,6 +599,15 @@
 											<span>{{ payment.payer_phone || payment.sender || __('No phone') }}</span>
 											<span>{{ payment.transaction_id || payment.name }}</span>
 											<span v-if="payment.account_reference">{{ payment.account_reference }}</span>
+											<span
+												v-if="payment.allocated_amount > 0"
+												class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800"
+											>
+												{{ __('Partially Allocated: {0} used, {1} available', [
+													formatCurrency(payment.allocated_amount),
+													formatCurrency(payment.available_amount),
+												]) }}
+											</span>
 											<span v-if="payment.match_score" class="font-semibold text-emerald-700">
 												{{ payment.match_level }} - {{ payment.match_reasons?.join(', ') }}
 											</span>
@@ -1564,9 +1573,8 @@ async function loadSmsEnablerPayments(search = smsEnablerSearch.value, options =
 
 		const availablePayments = (result?.payments || []).filter(
 			(payment) =>
-				payment?.status === "Pending" &&
-				!payment?.sales_invoice &&
-				!payment?.payment_entry,
+				["Pending", "Matched", "Partially Allocated"].includes(payment?.status) &&
+				Number.parseFloat(payment?.available_amount || payment?.amount || 0) > 0,
 		)
 		smsEnablerPendingCount.value = availablePayments.length
 		smsEnablerPayments.value = availablePayments
@@ -1624,7 +1632,11 @@ function addSmsEnablerPayment(payment) {
 		return
 	}
 
-	const amount = Number.parseFloat(payment.amount || 0)
+	const availableAmount = Number.parseFloat(payment.available_amount || payment.amount || 0)
+	if (remainingAmount.value <= 0) {
+		return
+	}
+	const amount = Math.min(availableAmount, remainingAmount.value)
 	if (!amount || amount <= 0) {
 		return
 	}
@@ -1637,6 +1649,10 @@ function addSmsEnablerPayment(payment) {
 		sms_payment_name: payment.name,
 		sms_transaction_id: payment.transaction_id || payment.name,
 		reference_no: payment.transaction_id || payment.name,
+		sms_original_amount: Number.parseFloat(payment.amount || 0),
+		sms_allocated_amount: Number.parseFloat(payment.allocated_amount || 0),
+		sms_available_amount: availableAmount,
+		sms_payment_entry: payment.payment_entry || "",
 	})
 }
 
@@ -1717,7 +1733,9 @@ const mpesaStkAmount = computed(() => {
 const selectedSmsEnablerTotal = computed(() => {
 	return round2(
 		selectedSmsEnablerPayments.value.reduce(
-			(sum, payment) => sum + (Number.parseFloat(payment.amount) || 0),
+			(sum, payment) =>
+				sum +
+				(Number.parseFloat(payment.available_amount || payment.amount) || 0),
 			0,
 		),
 	)

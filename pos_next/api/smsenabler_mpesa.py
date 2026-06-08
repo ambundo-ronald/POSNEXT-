@@ -258,7 +258,7 @@ def _score_payment_match(payment, amount=0, customer_data=None):
 	reasons = []
 	amount = flt(amount or 0)
 	customer_data = customer_data or {}
-	payment_amount = flt(payment.get("amount") or 0)
+	payment_amount = flt(payment.get("available_amount") or payment.get("amount") or 0)
 
 	if amount > 0:
 		difference = abs(payment_amount - amount)
@@ -325,6 +325,33 @@ def _parse_payment_names(payments):
 	return names
 
 
+def _parse_payment_allocations(payments):
+	if isinstance(payments, str):
+		try:
+			payments = json.loads(payments)
+		except ValueError:
+			payments = [p.strip() for p in payments.split(",") if p.strip()]
+
+	allocations = []
+	for payment in payments or []:
+		if isinstance(payment, dict):
+			name = payment.get("name") or payment.get("sms_payment_name")
+			amount = flt(payment.get("amount") or 0)
+		else:
+			name = payment
+			amount = 0
+		if name:
+			allocations.append({"name": str(name).strip(), "amount": amount})
+	return allocations
+
+
+def _get_sms_payment_amounts(payment):
+	total = flt(payment.get("amount"))
+	allocated = max(flt(payment.get("allocated_amount")), 0)
+	available = max(total - allocated, 0)
+	return total, allocated, available
+
+
 def _find_payment_entry_for_sms(invoice, transaction_id=None, amount=None):
 	if not invoice:
 		return None
@@ -353,6 +380,192 @@ def _find_payment_entry_for_sms(invoice, transaction_id=None, amount=None):
 		as_dict=True,
 	)
 	return result[0].name if result else None
+
+
+def _create_sms_payment_entry(payment, invoice_doc, allocated_amount, mode_of_payment):
+	from pos_next.api.partial_payments import _resolve_payment_account
+
+	total_amount, _, _ = _get_sms_payment_amounts(payment)
+	posting_date = max(
+		getdate(payment.received_at) if payment.received_at else getdate(nowdate()),
+		getdate(invoice_doc.posting_date),
+	)
+
+	pe = frappe.new_doc("Payment Entry")
+	pe.payment_type = "Receive"
+	pe.posting_date = posting_date
+	pe.party_type = "Customer"
+	pe.party = invoice_doc.customer
+	pe.company = invoice_doc.company
+	pe.mode_of_payment = mode_of_payment
+	pe.paid_from = invoice_doc.debit_to
+	pe.paid_to = _resolve_payment_account(
+		mode_of_payment=mode_of_payment,
+		company=invoice_doc.company,
+		invoice=invoice_doc,
+	)
+	pe.paid_amount = total_amount
+	pe.received_amount = total_amount
+	pe.paid_from_account_currency = invoice_doc.currency
+	pe.paid_to_account_currency = invoice_doc.currency
+	pe.reference_no = (payment.transaction_id or payment.name)[:140]
+	pe.reference_date = posting_date
+	pe.remarks = _("SMS Enabler reconciliation for {0}").format(payment.name)
+	pe.append(
+		"references",
+		{
+			"reference_doctype": "Sales Invoice",
+			"reference_name": invoice_doc.name,
+			"total_amount": invoice_doc.grand_total,
+			"outstanding_amount": invoice_doc.outstanding_amount,
+			"allocated_amount": allocated_amount,
+		},
+	)
+	pe.flags.ignore_permissions = True
+	pe.insert()
+	pe.submit()
+	return pe.name
+
+
+def _create_sms_advance_payment_entry(payment, invoice_doc, amount, mode_of_payment):
+	from pos_next.api.partial_payments import _resolve_payment_account
+
+	posting_date = max(
+		getdate(payment.received_at) if payment.received_at else getdate(nowdate()),
+		getdate(invoice_doc.posting_date),
+	)
+	pe = frappe.new_doc("Payment Entry")
+	pe.payment_type = "Receive"
+	pe.posting_date = posting_date
+	pe.party_type = "Customer"
+	pe.party = invoice_doc.customer
+	pe.company = invoice_doc.company
+	pe.mode_of_payment = mode_of_payment
+	pe.paid_from = invoice_doc.debit_to
+	pe.paid_to = _resolve_payment_account(
+		mode_of_payment=mode_of_payment,
+		company=invoice_doc.company,
+		invoice=invoice_doc,
+	)
+	pe.paid_amount = amount
+	pe.received_amount = amount
+	pe.paid_from_account_currency = invoice_doc.currency
+	pe.paid_to_account_currency = invoice_doc.currency
+	pe.reference_no = (payment.transaction_id or payment.name)[:140]
+	pe.reference_date = posting_date
+	pe.remarks = _("Unallocated SMS Enabler balance for {0}").format(payment.name)
+	pe.flags.ignore_permissions = True
+	pe.insert()
+	pe.submit()
+	return pe.name
+
+
+def _allocate_existing_payment_entry(payment_entry, invoice_doc, allocated_amount):
+	from erpnext.accounts.utils import reconcile_against_document
+
+	pe = frappe.get_doc("Payment Entry", payment_entry)
+	if pe.docstatus != 1:
+		frappe.throw(_("Payment Entry {0} is not submitted").format(pe.name))
+	if pe.party_type != "Customer" or pe.party != invoice_doc.customer:
+		frappe.throw(
+			_("SMS payment credit belongs to customer {0}, not {1}").format(
+				pe.party, invoice_doc.customer
+			)
+		)
+	if pe.company != invoice_doc.company:
+		frappe.throw(_("Payment Entry {0} belongs to company {1}").format(pe.name, pe.company))
+
+	reconcile_against_document(
+		[
+			frappe._dict(
+				{
+					"voucher_type": "Payment Entry",
+					"voucher_no": pe.name,
+					"voucher_detail_no": None,
+					"against_voucher_type": "Sales Invoice",
+					"against_voucher": invoice_doc.name,
+					"account": pe.paid_from,
+					"exchange_rate": pe.source_exchange_rate or 1,
+					"grand_total": invoice_doc.grand_total,
+					"outstanding_amount": invoice_doc.outstanding_amount,
+					"dimensions": {},
+					"party_type": "Customer",
+					"party": invoice_doc.customer,
+					"is_advance": pe.get("book_advance_payments_in_separate_party_account"),
+					"dr_or_cr": "credit_in_account_currency",
+					"unreconciled_amount": flt(pe.unallocated_amount),
+					"unadjusted_amount": flt(pe.unallocated_amount),
+					"allocated_amount": allocated_amount,
+					"difference_amount": 0,
+					"difference_account": None,
+					"difference_posting_date": None,
+				}
+			)
+		]
+	)
+	return pe.name
+
+
+def _apply_sms_payment_to_invoice(payment, invoice_doc, requested_amount=0):
+	total_amount, allocated_amount, available_amount = _get_sms_payment_amounts(payment)
+	if total_amount <= 0 or available_amount <= 0.01:
+		frappe.throw(_("SMS payment {0} has no available balance").format(payment.name))
+	if payment.customer and payment.customer != invoice_doc.customer:
+		frappe.throw(
+			_("SMS payment {0} is already linked to customer {1}").format(
+				payment.name, payment.customer
+			)
+		)
+
+	invoice_outstanding = flt(invoice_doc.outstanding_amount)
+	to_allocate = min(available_amount, invoice_outstanding)
+	if requested_amount > 0:
+		to_allocate = min(to_allocate, flt(requested_amount))
+	if to_allocate <= 0.01:
+		frappe.throw(_("There is no amount available to allocate"))
+
+	mode_of_payment = payment.mode_of_payment or _get_phone_mop_for_company(invoice_doc.company)
+	if not mode_of_payment:
+		frappe.throw(
+			_("No enabled Phone mode of payment is configured for company {0}").format(
+				invoice_doc.company
+			)
+		)
+
+	if payment.payment_entry:
+		payment_entry = _allocate_existing_payment_entry(
+			payment.payment_entry, invoice_doc, to_allocate
+		)
+	else:
+		payment_entry = _create_sms_payment_entry(
+			payment, invoice_doc, to_allocate, mode_of_payment
+		)
+
+	new_allocated = min(allocated_amount + to_allocate, total_amount)
+	new_available = max(total_amount - new_allocated, 0)
+	payment.customer = invoice_doc.customer
+	payment.company = invoice_doc.company
+	payment.pos_profile = payment.pos_profile or invoice_doc.pos_profile
+	payment.sales_invoice = invoice_doc.name
+	payment.mode_of_payment = mode_of_payment
+	payment.payment_entry = payment_entry
+	payment.allocated_amount = new_allocated
+	payment.available_amount = new_available
+	payment.status = "Consumed" if new_available <= 0.01 else "Partially Allocated"
+	payment.flags.ignore_permissions = True
+	payment.save()
+
+	return {
+		"name": payment.name,
+		"original_amount": total_amount,
+		"allocated_now": to_allocate,
+		"allocated_amount": new_allocated,
+		"available_amount": new_available,
+		"mode_of_payment": mode_of_payment,
+		"sales_invoice": invoice_doc.name,
+		"payment_entry": payment_entry,
+		"status": payment.status,
+	}
 
 
 def _has_invoice_access(invoice_doc, permtype="read"):
@@ -578,16 +791,12 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 		return {"count": 0, "payments": []}
 
 	filters = {
-		"status": "Pending",
-		"sales_invoice": ["in", ["", None]],
-		"payment_entry": ["in", ["", None]],
+		"status": ["in", ["Pending", "Matched", "Partially Allocated"]],
 	}
 	if company:
 		filters["company"] = ["in", [company, "", None]]
 	if profile_mode:
 		filters["pos_profile"] = pos_profile
-
-	total_count = frappe.db.count(SMS_REGISTER_DOCTYPE, filters)
 
 	payments = frappe.get_all(
 		SMS_REGISTER_DOCTYPE,
@@ -598,6 +807,8 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 			"sender",
 			"transaction_id",
 			"amount",
+			"allocated_amount",
+			"available_amount",
 			"payer_name",
 			"payer_phone",
 			"account_reference",
@@ -618,6 +829,15 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 	customer_data = _get_customer_match_data(customer)
 	matches = []
 	for payment in payments:
+		total_amount, allocated_amount, available_amount = _get_sms_payment_amounts(payment)
+		if available_amount <= 0.01:
+			continue
+		payment["amount"] = total_amount
+		payment["allocated_amount"] = allocated_amount
+		payment["available_amount"] = available_amount
+		payment["allocation_status"] = (
+			_("Partially Allocated") if allocated_amount > 0 else _("Unallocated")
+		)
 		values = [
 			payment.get("source"),
 			payment.get("sender"),
@@ -640,7 +860,7 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 		),
 		reverse=True,
 	)
-	return {"count": total_count, "payments": matches}
+	return {"count": len(matches), "payments": matches}
 
 
 @frappe.whitelist()
@@ -671,7 +891,11 @@ def get_sms_payments_for_payment_reconciliation(
 				"sms_payment": payment.get("name"),
 				"reference_name": reference_name,
 				"posting_date": posting_date,
-				"amount": flt(payment.get("amount")),
+				"amount": flt(payment.get("available_amount")),
+				"original_amount": flt(payment.get("amount")),
+				"allocated_amount": flt(payment.get("allocated_amount")),
+				"available_amount": flt(payment.get("available_amount")),
+				"allocation_status": payment.get("allocation_status"),
 				"reference_type": reference_type,
 				"sender": payment.get("sender"),
 				"source": payment.get("source"),
@@ -734,22 +958,24 @@ def reconcile_invoice_with_sms_payments(invoice=None, sms_payments=None):
 	if invoice_doc.is_return:
 		frappe.throw(_("Return invoices cannot be reconciled from SMS Enabler payments"))
 
-	names = _parse_payment_names(sms_payments)
-	if not names:
+	payment_allocations = _parse_payment_allocations(sms_payments)
+	if not payment_allocations:
 		frappe.throw(_("No SMS Enabler payments selected"))
 
 	outstanding = flt(invoice_doc.outstanding_amount)
 	if outstanding <= 0:
 		frappe.throw(_("Invoice {0} is already fully paid").format(invoice))
 
-	mode_of_payment = _get_phone_mop_for_company(invoice_doc.company)
-	payments_to_create = []
-	selected_payments = []
-	linked_entries = {}
+	processed = []
+	payment_entries_created = []
+	for selected in payment_allocations:
+		invoice_doc.reload()
+		if flt(invoice_doc.outstanding_amount) <= 0.01:
+			break
 
-	for name in names:
+		name = selected["name"]
 		payment = frappe.get_doc(SMS_REGISTER_DOCTYPE, name)
-		if payment.status not in ("Pending", "Matched"):
+		if payment.status not in ("Pending", "Matched", "Partially Allocated"):
 			frappe.throw(_("SMS payment {0} is already {1}").format(name, payment.status))
 		if payment.company and payment.company != invoice_doc.company:
 			frappe.throw(_("SMS payment {0} belongs to company {1}").format(name, payment.company))
@@ -758,79 +984,13 @@ def reconcile_invoice_with_sms_payments(invoice=None, sms_payments=None):
 				_("SMS payment {0} belongs to POS Profile {1}").format(name, payment.pos_profile)
 			)
 
-		amount = flt(payment.amount)
-		if amount <= 0:
-			frappe.throw(_("SMS payment {0} has no valid amount").format(name))
-
-		selected_mode = payment.mode_of_payment or mode_of_payment
-		if not selected_mode:
-			frappe.throw(_("No enabled Phone mode of payment is configured for company {0}").format(invoice_doc.company))
-
-		existing_payment_entry = payment.payment_entry or _find_payment_entry_for_sms(
-			invoice,
-			transaction_id=payment.transaction_id or payment.name,
-			amount=amount,
+		had_payment_entry = bool(payment.payment_entry)
+		result = _apply_sms_payment_to_invoice(
+			payment, invoice_doc, requested_amount=selected.get("amount")
 		)
-
-		selected_payments.append((payment, selected_mode))
-		if existing_payment_entry:
-			linked_entries[name] = existing_payment_entry
-			continue
-
-		payments_to_create.append(
-			{
-				"name": name,
-				"payload": {
-					"mode_of_payment": selected_mode,
-					"amount": amount,
-					"reference_no": payment.transaction_id or payment.name,
-				},
-			}
-		)
-
-	total_new_amount = sum(flt(item["payload"]["amount"]) for item in payments_to_create)
-	if total_new_amount > outstanding + 0.01:
-		frappe.throw(
-			_("Selected payment amount {0} exceeds outstanding amount {1}").format(
-				frappe.format_value(total_new_amount, {"fieldtype": "Currency"}),
-				frappe.format_value(outstanding, {"fieldtype": "Currency"}),
-			)
-		)
-
-	payment_entries_created = []
-	if payments_to_create:
-		from pos_next.api.partial_payments import add_payment_to_partial_invoice
-
-		result = add_payment_to_partial_invoice(
-			invoice,
-			[item["payload"] for item in payments_to_create],
-		)
-		payment_entries_created = result.get("payment_entries_created") or []
-
-		for item, payment_entry in zip(payments_to_create, payment_entries_created):
-			linked_entries[item["name"]] = payment_entry
-
-	processed = []
-	for payment, selected_mode in selected_payments:
-		payment.customer = invoice_doc.customer
-		payment.company = invoice_doc.company
-		payment.pos_profile = payment.pos_profile or invoice_doc.pos_profile
-		payment.sales_invoice = invoice
-		payment.mode_of_payment = selected_mode
-		payment.payment_entry = linked_entries.get(payment.name) or payment.payment_entry
-		payment.status = "Consumed"
-		payment.flags.ignore_permissions = True
-		payment.save()
-
-		processed.append(
-			{
-				"name": payment.name,
-				"amount": flt(payment.amount),
-				"mode_of_payment": payment.mode_of_payment,
-				"sales_invoice": invoice,
-				"payment_entry": payment.payment_entry,
-			}
-		)
+		processed.append(result)
+		if not had_payment_entry:
+			payment_entries_created.append(result["payment_entry"])
 
 	invoice_doc.reload()
 	return {
@@ -854,57 +1014,96 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 	invoice_doc = frappe.get_doc("Sales Invoice", invoice)
 	company = company or invoice_doc.company
 	mode_of_payment = _get_phone_mop_for_company(company)
-	names = _parse_payment_names(sms_payments)
-	if not names:
+	payment_allocations = _parse_payment_allocations(sms_payments)
+	if not payment_allocations:
 		frappe.throw(_("No SMS Enabler payments selected"))
 
 	selected_total = 0
-	for name in names:
-		selected_total += flt(
-			frappe.db.get_value(SMS_REGISTER_DOCTYPE, name, "amount") or 0
-		)
+	for item in payment_allocations:
+		requested_amount = flt(item.get("amount"))
+		if requested_amount <= 0:
+			values = frappe.db.get_value(
+				SMS_REGISTER_DOCTYPE,
+				item["name"],
+				["amount", "allocated_amount"],
+				as_dict=True,
+			) or {}
+			requested_amount = max(
+				flt(values.get("amount")) - flt(values.get("allocated_amount")),
+				0,
+			)
+		selected_total += requested_amount
 
 	# POS checkout normally includes SMS selections as direct Sales Invoice payment rows.
 	# If the invoice still shows less paid than the selected SMS total, fall back to the
 	# reconciliation path so the invoice is actually settled before the SMS rows are consumed.
 	if (
 		invoice_doc.docstatus == 1
-		and selected_total > flt(invoice_doc.paid_amount) + 0.01
+		and selected_total > 0.01
 		and flt(invoice_doc.outstanding_amount) > 0.01
 	):
-		return reconcile_invoice_with_sms_payments(invoice=invoice, sms_payments=names)
+		return reconcile_invoice_with_sms_payments(
+			invoice=invoice, sms_payments=payment_allocations
+		)
 
 	processed = []
-	for name in names:
+	for selected in payment_allocations:
+		name = selected["name"]
 		payment = frappe.get_doc(SMS_REGISTER_DOCTYPE, name)
-		if payment.status not in ("Pending", "Matched"):
+		if payment.status not in ("Pending", "Matched", "Partially Allocated"):
 			frappe.throw(_("SMS payment {0} is already {1}").format(name, payment.status))
 		if payment.pos_profile and payment.pos_profile != invoice_doc.pos_profile:
 			frappe.throw(
 				_("SMS payment {0} belongs to POS Profile {1}").format(name, payment.pos_profile)
 			)
 
+		total_amount, allocated_amount, available_amount = _get_sms_payment_amounts(payment)
+		allocated_now = min(
+			available_amount,
+			flt(selected.get("amount")) or available_amount,
+		)
+		if allocated_now <= 0.01:
+			continue
+
+		mode_of_payment = payment.mode_of_payment or mode_of_payment
+		new_allocated = min(allocated_amount + allocated_now, total_amount)
+		new_available = max(total_amount - new_allocated, 0)
+		payment_entry = payment.payment_entry or _find_payment_entry_for_sms(
+			invoice,
+			transaction_id=payment.transaction_id or payment.name,
+			amount=allocated_now,
+		)
+		if new_available > 0.01 and not payment_entry:
+			payment_entry = _create_sms_advance_payment_entry(
+				payment,
+				invoice_doc,
+				new_available,
+				mode_of_payment,
+			)
+
 		payment.customer = customer or invoice_doc.customer
 		payment.company = company
 		payment.pos_profile = payment.pos_profile or invoice_doc.pos_profile
 		payment.sales_invoice = invoice
-		payment.mode_of_payment = payment.mode_of_payment or mode_of_payment
-		payment.payment_entry = payment.payment_entry or _find_payment_entry_for_sms(
-			invoice,
-			transaction_id=payment.transaction_id or payment.name,
-			amount=payment.amount,
-		)
-		payment.status = "Consumed"
+		payment.mode_of_payment = mode_of_payment
+		payment.payment_entry = payment_entry
+		payment.allocated_amount = new_allocated
+		payment.available_amount = new_available
+		payment.status = "Consumed" if new_available <= 0.01 else "Partially Allocated"
 		payment.flags.ignore_permissions = True
 		payment.save()
 
 		processed.append(
 			{
 				"name": name,
-				"amount": flt(payment.amount),
+				"original_amount": total_amount,
+				"allocated_now": allocated_now,
+				"allocated_amount": new_allocated,
+				"available_amount": new_available,
 				"mode_of_payment": payment.mode_of_payment,
 				"sales_invoice": invoice,
 				"payment_entry": payment.payment_entry,
+				"status": payment.status,
 			}
 		)
 

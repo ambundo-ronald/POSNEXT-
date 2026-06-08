@@ -5,6 +5,7 @@
 from __future__ import unicode_literals
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, now_datetime
 
@@ -17,7 +18,19 @@ class SMSEnablerPaymentRegister(Document):
 		if not self.status:
 			self.status = "Pending"
 
+		self.validate_pos_profile_company()
+
 		self.amount = flt(self.amount)
+		self.allocated_amount = max(flt(self.allocated_amount), 0)
+		self.available_amount = max(flt(self.amount) - self.allocated_amount, 0)
+
+		if self.status in ("Pending", "Matched", "Partially Allocated", "Consumed"):
+			if self.available_amount <= 0.01:
+				self.status = "Consumed"
+			elif self.allocated_amount > 0:
+				self.status = "Partially Allocated"
+			elif self.status in ("Partially Allocated", "Consumed"):
+				self.status = "Pending"
 
 		if self.transaction_id:
 			existing = self.get_existing_payment_with_same_reference()
@@ -29,6 +42,22 @@ class SMSEnablerPaymentRegister(Document):
 				and self.parse_status == "Parsed"
 			):
 				self.status = "Pending"
+
+	def validate_pos_profile_company(self):
+		if not self.pos_profile:
+			return
+
+		profile_company = frappe.db.get_value("POS Profile", self.pos_profile, "company")
+		if self.company and profile_company != self.company:
+			frappe.throw(
+				_("POS Profile {0} belongs to company {1}, not {2}.").format(
+					self.pos_profile,
+					profile_company,
+					self.company,
+				)
+			)
+		if not self.company:
+			self.company = profile_company
 
 	def get_existing_payment_with_same_reference(self):
 		"""Return an earlier live SMS payment with the same bank reference.
