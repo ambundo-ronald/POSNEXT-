@@ -393,21 +393,29 @@ function buildUomOptions() {
 	if (!props.item) return []
 
 	const uomOptions = []
+	const seenUoms = new Set()
 
 	// Stock UOM option
-	uomOptions.push({
-		type: "uom",
-		uom: props.item.stock_uom,
-		conversion_factor: 1,
-		label: props.item.stock_uom,
-		description: __("Stock unit"),
-		rate: getUomPrice(props.item.stock_uom, 1),
-		priceLabel: __('per {0}', [props.item.stock_uom]),
-	})
+	if (props.item.stock_uom) {
+		seenUoms.add(props.item.stock_uom)
+		uomOptions.push({
+			type: "uom",
+			uom: props.item.stock_uom,
+			conversion_factor: 1,
+			label: props.item.stock_uom,
+			description: __("Stock unit"),
+			rate: getUomPrice(props.item.stock_uom, 1),
+			priceLabel: __('per {0}', [props.item.stock_uom]),
+		})
+	}
 
 	// Additional UOMs
 	if (props.item.item_uoms && props.item.item_uoms.length > 0) {
 		props.item.item_uoms.forEach((uomData) => {
+			if (!uomData.uom || seenUoms.has(uomData.uom)) {
+				return
+			}
+			seenUoms.add(uomData.uom)
 			uomOptions.push({
 				type: "uom",
 				uom: uomData.uom,

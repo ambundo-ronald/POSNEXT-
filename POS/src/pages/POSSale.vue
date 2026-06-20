@@ -1410,6 +1410,38 @@ function handleShiftClosed() {
 	}
 }
 
+function isEquivalentStockUom(item, uomData = {}) {
+	const stockUom = item?.stock_uom
+	const uom = uomData.uom || item?.uom
+	const conversionFactor = Number.parseFloat(uomData.conversion_factor ?? 1)
+
+	return Boolean(
+		stockUom &&
+		uom &&
+		uom === stockUom &&
+		(!conversionFactor || Math.abs(conversionFactor - 1) < 0.0001),
+	)
+}
+
+function hasSelectableUomChoices(item) {
+	if (!item?.item_uoms?.length) {
+		return false
+	}
+
+	if (item.uom && item.stock_uom && item.uom !== item.stock_uom) {
+		return false
+	}
+
+	return item.item_uoms.some((uomData) => {
+		const conversionFactor = Number.parseFloat(uomData.conversion_factor ?? 1)
+		return (
+			uomData.uom &&
+			!isEquivalentStockUom(item, uomData) &&
+			(uomData.uom !== item.stock_uom || Math.abs(conversionFactor - 1) >= 0.0001)
+		)
+	})
+}
+
 function handleItemSelected(item, autoAdd = false) {
 	// Auto-add mode
 	if (autoAdd) {
@@ -1447,7 +1479,7 @@ function handleItemSelected(item, autoAdd = false) {
 	}
 
 	// Check for UOMs
-	if (!settingsStore.allowChangeUom && item.item_uoms && item.item_uoms.length > 0) {
+	if (!settingsStore.allowChangeUom && hasSelectableUomChoices(item)) {
 		cartStore.setPendingItem(item, 1, "uom")
 		uiStore.showItemSelectionDialog = true
 		return
@@ -1900,7 +1932,7 @@ async function handleOptionSelected(option) {
 		if (option.type === "variant") {
 			const variant = option.data
 
-			if (!settingsStore.allowChangeUom && variant.item_uoms && variant.item_uoms.length > 0) {
+			if (!settingsStore.allowChangeUom && hasSelectableUomChoices(variant)) {
 				cartStore.setPendingItem(variant, cartStore.pendingItemQty, "uom")
 				return
 			}
