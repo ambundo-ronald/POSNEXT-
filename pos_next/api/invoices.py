@@ -28,6 +28,49 @@ except Exception:  # pragma: no cover - ERPNext not installed in some environmen
 # Helper Functions
 # ==========================================
 
+CLIENT_TRANSACTION_FIELD = "posa_client_transaction_id"
+
+
+def _invoice_submission_response(invoice_doc):
+    return {
+        "name": invoice_doc.name,
+        "status": invoice_doc.docstatus,
+        "grand_total": invoice_doc.grand_total,
+        "total": invoice_doc.total,
+        "net_total": invoice_doc.net_total,
+        "outstanding_amount": invoice_doc.outstanding_amount,
+        "paid_amount": invoice_doc.paid_amount,
+        "change_amount": getattr(invoice_doc, "change_amount", 0),
+    }
+
+
+def _get_invoice_for_client_transaction(client_transaction_id, pos_profile=None):
+    if not client_transaction_id:
+        return None
+
+    client_transaction_id = cstr(client_transaction_id).strip()
+    if len(client_transaction_id) > 140:
+        frappe.throw(_("Invalid checkout transaction ID"))
+
+    existing = frappe.db.get_value(
+        "Sales Invoice",
+        {CLIENT_TRANSACTION_FIELD: client_transaction_id},
+        ["name", "docstatus", "pos_profile"],
+        as_dict=True,
+    )
+    if not existing:
+        return None
+
+    if pos_profile and existing.pos_profile != pos_profile:
+        frappe.throw(_("Checkout transaction ID belongs to another POS Profile"))
+
+    if existing.docstatus == 2:
+        frappe.throw(
+            _("The invoice for this checkout transaction was cancelled. Start a new sale.")
+        )
+
+    return frappe.get_doc("Sales Invoice", existing.name)
+
 
 def get_payment_account(mode_of_payment, company):
     """
@@ -754,6 +797,21 @@ def submit_invoice(invoice=None, data=None):
         pos_profile = invoice.get("pos_profile")
         doctype = "Sales Invoice"
         is_credit_sale = cint((data or {}).get("is_credit_sale") or invoice.get("is_credit_sale"))
+        client_transaction_id = cstr(
+            invoice.get(CLIENT_TRANSACTION_FIELD)
+            or (data or {}).get("client_transaction_id")
+        ).strip()
+
+        if client_transaction_id:
+            invoice[CLIENT_TRANSACTION_FIELD] = client_transaction_id
+            existing_transaction_invoice = _get_invoice_for_client_transaction(
+                client_transaction_id,
+                pos_profile,
+            )
+            if existing_transaction_invoice:
+                if existing_transaction_invoice.docstatus == 1:
+                    return _invoice_submission_response(existing_transaction_invoice)
+                invoice["name"] = existing_transaction_invoice.name
 
         if is_credit_sale:
             from pos_next.pos_next.doctype.pos_settings.pos_settings import (
@@ -907,16 +965,7 @@ def submit_invoice(invoice=None, data=None):
                 )
 
         # Return complete invoice details
-        return {
-            "name": invoice_doc.name,
-            "status": invoice_doc.docstatus,
-            "grand_total": invoice_doc.grand_total,
-            "total": invoice_doc.total,
-            "net_total": invoice_doc.net_total,
-            "outstanding_amount": invoice_doc.outstanding_amount,
-            "paid_amount": invoice_doc.paid_amount,
-            "change_amount": getattr(invoice_doc, "change_amount", 0),
-        }
+        return _invoice_submission_response(invoice_doc)
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Submit Invoice Error")
         raise

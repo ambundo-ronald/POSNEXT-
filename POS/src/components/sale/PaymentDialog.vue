@@ -805,11 +805,11 @@
 				<!-- Complete/Partial Payment Button -->
 				<button
 					@click="completePayment"
-					:disabled="!canComplete"
+					:disabled="!canComplete || isProcessing"
 					:class="[
 						'w-full inline-flex items-center justify-center gap-2 transition-colors focus:outline-none',
 						'h-12 text-base font-semibold px-4 rounded-lg touch-manipulation',
-						!canComplete
+						!canComplete || isProcessing
 							? 'bg-blue-300 text-white cursor-not-allowed'
 							: 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-400'
 					]"
@@ -817,18 +817,18 @@
 					<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
 						<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
 					</svg>
-					<span>{{ paymentButtonText }}</span>
+					<span>{{ isProcessing ? __('Processing...') : paymentButtonText }}</span>
 				</button>
 
 				<!-- Pay on Account Button (if credit sales enabled) -->
 				<button
 					v-if="allowCreditSale"
 					@click="addCreditAccountPayment"
-					:disabled="paymentEntries.length > 0"
+					:disabled="paymentEntries.length > 0 || isProcessing"
 					:class="[
 						'w-full inline-flex items-center justify-center gap-2 transition-colors focus:outline-none',
 						'h-12 text-base font-semibold px-4 rounded-lg touch-manipulation',
-						paymentEntries.length > 0
+						paymentEntries.length > 0 || isProcessing
 							? 'bg-orange-300 text-white cursor-not-allowed'
 							: 'bg-orange-500 text-white hover:bg-orange-600 active:bg-orange-700 focus-visible:ring-2 focus-visible:ring-orange-400'
 					]"
@@ -871,7 +871,8 @@
 
 					<button
 						@click="show = false"
-						class="flex-1 inline-flex items-center justify-center gap-1.5 h-11 px-3 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-lg transition-colors touch-manipulation"
+						:disabled="isProcessing"
+						class="flex-1 inline-flex items-center justify-center gap-1.5 h-11 px-3 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-lg transition-colors touch-manipulation disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						<span>{{ __('Cancel') }}</span>
 					</button>
@@ -912,7 +913,8 @@
 					<!-- Cancel Button -->
 					<button
 						@click="show = false"
-						class="inline-flex items-center justify-center h-9 px-4 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-lg transition-colors"
+						:disabled="isProcessing"
+						class="inline-flex items-center justify-center h-9 px-4 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						{{ __('Cancel') }}
 					</button>
@@ -921,11 +923,11 @@
 					<button
 						v-if="allowCreditSale"
 						@click="addCreditAccountPayment"
-						:disabled="paymentEntries.length > 0"
+						:disabled="paymentEntries.length > 0 || isProcessing"
 						:class="[
 							'inline-flex items-center justify-center gap-2 transition-colors focus:outline-none',
 							'h-9 text-sm font-semibold px-4 rounded-lg',
-							paymentEntries.length > 0
+							paymentEntries.length > 0 || isProcessing
 								? 'bg-orange-300 text-white cursor-not-allowed'
 								: 'bg-orange-500 text-white hover:bg-orange-600 active:bg-orange-700 focus-visible:ring-2 focus-visible:ring-orange-400'
 						]"
@@ -939,11 +941,11 @@
 					<!-- Complete/Partial Payment Button -->
 					<button
 						@click="completePayment"
-						:disabled="!canComplete"
+						:disabled="!canComplete || isProcessing"
 						:class="[
 							'inline-flex items-center justify-center gap-2 transition-colors focus:outline-none',
 							'h-9 text-sm font-semibold px-5 rounded-lg',
-							!canComplete
+							!canComplete || isProcessing
 								? 'bg-blue-300 text-white cursor-not-allowed'
 								: 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-400'
 						]"
@@ -951,7 +953,7 @@
 						<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
 							<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
 						</svg>
-						<span>{{ paymentButtonText }}</span>
+						<span>{{ isProcessing ? __('Processing...') : paymentButtonText }}</span>
 					</button>
 				</div>
 			</div>
@@ -988,6 +990,10 @@ const props = defineProps({
 		default: "USD",
 	},
 	isOffline: {
+		type: Boolean,
+		default: false,
+	},
+	isProcessing: {
 		type: Boolean,
 		default: false,
 	},
@@ -2043,6 +2049,8 @@ function applyCustomerCredit() {
 
 // Add "Pay on Account" - Credit Sale (invoice with outstanding amount)
 function addCreditAccountPayment() {
+	if (props.isProcessing) return
+
 	console.log('[PaymentDialog] Add credit account payment (Pay Later):', {
 		grandTotal: props.grandTotal,
 		currentPaid: totalPaid.value,
@@ -2062,7 +2070,6 @@ function addCreditAccountPayment() {
 
 	console.log('[PaymentDialog] Emitting credit sale payment-completed:', paymentData)
 	emit("payment-completed", paymentData)
-	show.value = false
 }
 
 function removePaymentEntry(index) {
@@ -2143,7 +2150,7 @@ function completePayment() {
 		salesPersons: selectedSalesPersons.value
 	})
 
-	if (!canComplete.value) {
+	if (!canComplete.value || props.isProcessing) {
 		console.warn('[PaymentDialog] Cannot complete - validation failed')
 		return
 	}
@@ -2179,8 +2186,6 @@ function completePayment() {
 	console.log('[PaymentDialog] Emitting payment-completed:', paymentData)
 
 	emit("payment-completed", paymentData)
-
-	show.value = false
 }
 
 function formatCurrency(amount) {

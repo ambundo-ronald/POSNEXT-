@@ -300,6 +300,7 @@
 			:company="shiftStore.profileCompany"
 			:additional-discount="cartStore.additionalDiscount"
 			:request-mpesa-stk="requestMpesaStkPayment"
+			:is-processing="checkoutProcessing"
 			@payment-completed="handlePaymentCompleted"
 			@update-additional-discount="handleAdditionalDiscountUpdate"
 		/>
@@ -737,6 +738,15 @@ import { useLocale } from "@/composables/useLocale"
 import { usePriceListResolver } from "@/composables/usePriceListResolver"
 import { session } from "@/data/session"
 import { useUserData } from "@/data/user"
+import {
+	clearActiveCheckout,
+	createCheckoutFingerprint,
+	createClientTransactionId,
+	findRecentMatchingCheckout,
+	getActiveCheckout,
+	recordCompletedCheckout,
+	saveActiveCheckout,
+} from "@/utils/checkoutProtection"
 import { parseError } from "@/utils/errorHandler"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { buildBookkeepingPayments } from "@/utils/paymentReconciliation"
@@ -803,6 +813,7 @@ const pendingPaymentAfterCustomer = ref(false)
 const logoutAfterClose = ref(false)
 const showClearCacheDialog = ref(false)
 const clearCacheOverlayRef = ref(null)
+const checkoutProcessing = ref(false)
 
 // Debounce timer for offer reapplication
 const offerReapplyTimer = ref(null)
@@ -1704,6 +1715,14 @@ async function requestMpesaStkPayment({ phone_number, amount }) {
 }
 
 async function handlePaymentCompleted(paymentData) {
+	if (checkoutProcessing.value) {
+		return
+	}
+
+	checkoutProcessing.value = true
+	let clientTransactionId = null
+	let checkoutFingerprint = null
+
 	try {
 		const customerValue = cartStore.customer?.name || cartStore.customer
 		const paymentEntries = Array.isArray(paymentData.payments)
@@ -1734,6 +1753,43 @@ async function handlePaymentCompleted(paymentData) {
 			return
 		}
 
+		checkoutFingerprint = createCheckoutFingerprint({
+			posProfile: cartStore.posProfile,
+			customer: customerValue || shiftStore.profileCustomer,
+			grandTotal: cartStore.grandTotal,
+			items: cartStore.invoiceItems,
+			payments: paymentEntries,
+		})
+		const activeCheckout = getActiveCheckout(
+			cartStore.posProfile,
+			checkoutFingerprint,
+		)
+		const recentCheckout = activeCheckout
+			? null
+			: findRecentMatchingCheckout(checkoutFingerprint)
+
+		if (
+			recentCheckout &&
+			!window.confirm(
+				__(
+					"An almost identical sale was completed recently as {0}. Continue with this as a new sale?",
+					[recentCheckout.invoice_name || recentCheckout.transaction_id],
+				),
+			)
+		) {
+			return
+		}
+
+		clientTransactionId =
+			activeCheckout?.transaction_id || createClientTransactionId()
+		if (!activeCheckout) {
+			saveActiveCheckout(cartStore.posProfile, {
+				transaction_id: clientTransactionId,
+				fingerprint: checkoutFingerprint,
+				created_at: Date.now(),
+			})
+		}
+
 		cartStore.payments = []
 		if (directPosPayments.length) {
 			directPosPayments.forEach((payment) => {
@@ -1754,6 +1810,7 @@ async function handlePaymentCompleted(paymentData) {
 
 		if (offlineStore.isOffline) {
 			const invoiceData = {
+				posa_client_transaction_id: clientTransactionId,
 				pos_profile: cartStore.posProfile,
 				posa_pos_opening_shift: cartStore.posOpeningShift,
 				customer: customerValue || shiftStore.profileCustomer,
@@ -1767,6 +1824,13 @@ async function handlePaymentCompleted(paymentData) {
 			}
 
 			await offlineStore.saveInvoiceOffline(invoiceData)
+			recordCompletedCheckout({
+				transaction_id: clientTransactionId,
+				fingerprint: checkoutFingerprint,
+				invoice_name: `OFFLINE-${clientTransactionId.slice(-8)}`,
+				completed_at: Date.now(),
+			})
+			clearActiveCheckout(cartStore.posProfile, clientTransactionId)
 			uiStore.showSuccess(`OFFLINE-${Date.now()}`, cartStore.grandTotal, paymentData.paid_amount)
 			uiStore.showPaymentDialog = false
 			cartStore.clearCart()
@@ -1788,12 +1852,20 @@ async function handlePaymentCompleted(paymentData) {
 			const result = await cartStore.submitInvoice({
 				is_credit_sale: Boolean(paymentData.is_credit_sale),
 				submitInlinePayments: !shouldSettleWithPaymentEntries,
+				clientTransactionId,
 			})
 
 			if (result) {
 				const invoiceName = result.name || result.message?.name || __('Unknown')
 				const invoiceTotal = result.grand_total || result.total || 0
 				const paidAmount = paymentData.paid_amount || invoiceTotal
+				recordCompletedCheckout({
+					transaction_id: clientTransactionId,
+					fingerprint: checkoutFingerprint,
+					invoice_name: invoiceName,
+					completed_at: Date.now(),
+				})
+				clearActiveCheckout(cartStore.posProfile, clientTransactionId)
 
 				if (shouldSettleWithPaymentEntries && bookkeepingPayments.length > 0 && invoiceName !== __('Unknown')) {
 					try {
@@ -1891,6 +1963,8 @@ async function handlePaymentCompleted(paymentData) {
 		} else {
 			showWarning(errorContext.message)
 		}
+	} finally {
+		checkoutProcessing.value = false
 	}
 }
 

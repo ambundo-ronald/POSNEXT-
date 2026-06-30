@@ -722,6 +722,8 @@ export function useInvoice() {
 			const invoiceData = {
 				doctype: "Sales Invoice",
 				name: draftInvoiceName.value || undefined,
+				posa_client_transaction_id:
+					options.clientTransactionId || undefined,
 				pos_profile: posProfile.value,
 				selling_price_list: selectedPriceList.value || undefined,
 				price_list: selectedPriceList.value || undefined,
