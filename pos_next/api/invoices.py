@@ -3,10 +3,23 @@
 # For license information, please see license.txt
 
 from __future__ import unicode_literals
+
 import json
+from html import escape
+
 import frappe
 from frappe import _
-from frappe.utils import flt, cint, nowdate, nowtime, get_datetime, cstr
+from frappe.utils import (
+    cint,
+    cstr,
+    flt,
+    fmt_money,
+    get_datetime,
+    getdate,
+    nowdate,
+    nowtime,
+    scrub,
+)
 from erpnext.stock.doctype.batch.batch import get_batch_qty, get_batch_no
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
 from pos_next.pricing import resolve_profile_selling_price_list
@@ -1178,22 +1191,393 @@ def get_invoices(pos_profile, limit=100):
 	return invoices
 
 
-@frappe.whitelist()
-def get_sales_report(pos_profile, from_date=None, to_date=None, limit=10):
-	"""Return POS sales report metrics for the selected profile and date range."""
+def _validate_sales_report_access(pos_profile, from_date=None, to_date=None):
 	if not pos_profile:
 		frappe.throw(_("POS Profile is required"))
 
 	has_access = frappe.db.exists(
 		"POS Profile User",
-		{"parent": pos_profile, "user": frappe.session.user}
+		{"parent": pos_profile, "user": frappe.session.user},
 	)
-
 	if not has_access and not frappe.has_permission("Sales Invoice", "read"):
 		frappe.throw(_("You don't have access to this POS Profile"))
 
-	from_date = from_date or nowdate()
-	to_date = to_date or nowdate()
+	from_date = getdate(from_date or nowdate())
+	to_date = getdate(to_date or nowdate())
+	if from_date > to_date:
+		frappe.throw(_("From Date cannot be after To Date"))
+
+	return from_date, to_date
+
+
+def _get_sales_report_payment_export(
+	pos_profile,
+	from_date,
+	to_date,
+	sales_person=None,
+):
+	params = {
+		"pos_profile": pos_profile,
+		"from_date": from_date,
+		"to_date": to_date,
+		"sales_person": cstr(sales_person).strip(),
+	}
+	sales_person_filter = """
+		AND (
+			%(sales_person)s = ''
+			OR EXISTS (
+				SELECT 1
+				FROM `tabSales Team` sales_team_filter
+				WHERE sales_team_filter.parent = si.name
+					AND sales_team_filter.parenttype = 'Sales Invoice'
+					AND sales_team_filter.sales_person = %(sales_person)s
+			)
+		)
+	"""
+	invoices = frappe.db.sql(
+		f"""
+		SELECT
+			si.name,
+			si.posting_date,
+			si.posting_time,
+			si.paid_amount,
+			si.outstanding_amount,
+			si.grand_total,
+			si.is_return,
+			(
+				SELECT GROUP_CONCAT(
+					DISTINCT sales_team.sales_person
+					ORDER BY sales_team.sales_person
+					SEPARATOR ', '
+				)
+				FROM `tabSales Team` sales_team
+				WHERE sales_team.parent = si.name
+					AND sales_team.parenttype = 'Sales Invoice'
+			) AS sales_person
+		FROM `tabSales Invoice` si
+		WHERE si.pos_profile = %(pos_profile)s
+			AND si.docstatus = 1
+			AND si.is_pos = 1
+			AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
+			{sales_person_filter}
+		ORDER BY si.posting_date ASC, si.posting_time ASC, si.name ASC
+		""",
+		params,
+		as_dict=True,
+	)
+
+	inline_payments = frappe.db.sql(
+		f"""
+		SELECT
+			si.name AS invoice_id,
+			sip.mode_of_payment,
+			COALESCE(
+				SUM(
+					CASE
+						WHEN si.is_return = 1 THEN -ABS(sip.amount)
+						ELSE sip.amount
+					END
+				),
+				0
+			) AS amount
+		FROM `tabSales Invoice` si
+		INNER JOIN `tabSales Invoice Payment` sip ON sip.parent = si.name
+		WHERE si.pos_profile = %(pos_profile)s
+			AND si.docstatus = 1
+			AND si.is_pos = 1
+			AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
+			AND sip.amount != 0
+			{sales_person_filter}
+		GROUP BY si.name, sip.mode_of_payment
+		""",
+		params,
+		as_dict=True,
+	)
+
+	payment_entries = frappe.db.sql(
+		f"""
+		SELECT
+			si.name AS invoice_id,
+			pe.mode_of_payment,
+			COALESCE(
+				SUM(
+					CASE
+						WHEN si.is_return = 1 THEN -ABS(per.allocated_amount)
+						ELSE per.allocated_amount
+					END
+				),
+				0
+			) AS amount
+		FROM `tabSales Invoice` si
+		INNER JOIN `tabPayment Entry Reference` per
+			ON per.reference_doctype = 'Sales Invoice'
+			AND per.reference_name = si.name
+		INNER JOIN `tabPayment Entry` pe ON pe.name = per.parent
+		WHERE si.pos_profile = %(pos_profile)s
+			AND si.docstatus = 1
+			AND si.is_pos = 1
+			AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
+			AND pe.docstatus = 1
+			AND per.allocated_amount != 0
+			{sales_person_filter}
+		GROUP BY si.name, pe.mode_of_payment
+		""",
+		params,
+		as_dict=True,
+	)
+
+	payments_by_invoice = {}
+	for payment in list(inline_payments or []) + list(payment_entries or []):
+		invoice_id = payment.get("invoice_id")
+		mode_of_payment = payment.get("mode_of_payment") or _("Unspecified")
+		invoice_payments = payments_by_invoice.setdefault(invoice_id, {})
+		invoice_payments[mode_of_payment] = (
+			flt(invoice_payments.get(mode_of_payment)) + flt(payment.get("amount"))
+		)
+
+	rows = []
+	mode_totals = {}
+	for invoice in invoices:
+		invoice_payments = dict(payments_by_invoice.get(invoice.name) or {})
+		allocated_amount = flt(sum(invoice_payments.values()))
+		unallocated_amount = flt(invoice.grand_total) - allocated_amount
+		if abs(unallocated_amount) > 0.005:
+			mode = (
+				_("Unpaid / Credit")
+				if abs(flt(invoice.outstanding_amount)) > 0.005
+				else _("Unspecified")
+			)
+			invoice_payments[mode] = (
+				flt(invoice_payments.get(mode)) + unallocated_amount
+			)
+		elif not invoice_payments:
+			invoice_payments[_("Unspecified")] = 0
+
+		for mode_of_payment, amount in sorted(invoice_payments.items()):
+			rows.append(
+				{
+					"posting_date": invoice.posting_date,
+					"invoice_id": invoice.name,
+					"sales_person": invoice.sales_person or _("Unassigned"),
+					"mode_of_payment": mode_of_payment,
+					"amount": flt(amount),
+				}
+			)
+			mode_totals[mode_of_payment] = (
+				flt(mode_totals.get(mode_of_payment)) + flt(amount)
+			)
+
+	return {
+		"rows": rows,
+		"sales_person": cstr(sales_person).strip(),
+		"mode_totals": [
+			{"mode_of_payment": mode, "amount": amount}
+			for mode, amount in sorted(mode_totals.items())
+		],
+		"total_amount": flt(sum(row["amount"] for row in rows)),
+		"invoice_count": len(invoices),
+	}
+
+
+def _build_sales_report_xlsx(report, pos_profile, from_date, to_date, currency):
+	from frappe.utils.xlsxutils import make_xlsx
+
+	data = [
+		[_("POS Sales Payment Report")],
+		[_("POS Profile"), pos_profile],
+		[_("Date Range"), f"{from_date} - {to_date}"],
+		[
+			_("Sales Person"),
+			report["sales_person"] or _("All Sales Persons"),
+		],
+		[_("Currency"), currency],
+		[],
+		[
+			_("Posting Date"),
+			_("Invoice ID"),
+			_("Sales Person"),
+			_("Mode of Payment"),
+			_("Amount"),
+		],
+	]
+	for row in report["rows"]:
+		data.append(
+			[
+				str(row["posting_date"]),
+				row["invoice_id"],
+				row["sales_person"],
+				row["mode_of_payment"],
+				flt(row["amount"]),
+			]
+		)
+
+	data.extend([[], [_("Totals by Mode of Payment")]])
+	for total in report["mode_totals"]:
+		data.append(
+			["", "", "", total["mode_of_payment"], flt(total["amount"])]
+		)
+	data.extend(
+		[
+			["", "", "", _("Overall Total"), flt(report["total_amount"])],
+			["", "", "", _("Invoices"), cint(report["invoice_count"])],
+		]
+	)
+	return make_xlsx(
+		data,
+		_("POS Sales Report"),
+		column_widths=[16, 24, 24, 24, 18],
+	).getvalue()
+
+
+def _build_sales_report_pdf(report, pos_profile, from_date, to_date, currency):
+	from frappe.utils.pdf import get_pdf
+
+	rows_html = "".join(
+		f"""
+		<tr>
+			<td>{escape(str(row["posting_date"]))}</td>
+			<td>{escape(cstr(row["invoice_id"]))}</td>
+			<td>{escape(cstr(row["sales_person"]))}</td>
+			<td>{escape(cstr(row["mode_of_payment"]))}</td>
+			<td class="amount">{escape(fmt_money(row["amount"], currency=currency))}</td>
+		</tr>
+		"""
+		for row in report["rows"]
+	)
+	totals_html = "".join(
+		f"""
+		<tr>
+			<td colspan="4">{escape(cstr(total["mode_of_payment"]))}</td>
+			<td class="amount">{escape(fmt_money(total["amount"], currency=currency))}</td>
+		</tr>
+		"""
+		for total in report["mode_totals"]
+	)
+	html = f"""
+	<!doctype html>
+	<html>
+	<head>
+		<meta charset="utf-8">
+		<style>
+			@page {{ size: A4; margin: 18mm 14mm; }}
+			body {{ color: #1f2937; font-family: sans-serif; font-size: 10pt; }}
+			h1 {{ font-size: 18pt; margin: 0 0 6px; }}
+			.meta {{ color: #4b5563; margin-bottom: 18px; }}
+			table {{ border-collapse: collapse; width: 100%; }}
+			th, td {{ border: 1px solid #d1d5db; padding: 7px 8px; }}
+			th {{ background: #f3f4f6; text-align: left; }}
+			.amount {{ text-align: right; white-space: nowrap; }}
+			.totals {{ margin-top: 16px; }}
+			.totals td {{ font-weight: 600; }}
+			.overall td {{ background: #f3f4f6; font-weight: 700; }}
+		</style>
+	</head>
+	<body>
+		<h1>{escape(_("POS Sales Payment Report"))}</h1>
+		<div class="meta">
+			<div>{escape(_("POS Profile"))}: {escape(cstr(pos_profile))}</div>
+			<div>{escape(_("Date Range"))}: {escape(str(from_date))} - {escape(str(to_date))}</div>
+			<div>{escape(_("Sales Person"))}: {escape(report["sales_person"] or _("All Sales Persons"))}</div>
+			<div>{escape(_("Invoices"))}: {cint(report["invoice_count"])}</div>
+		</div>
+		<table>
+			<thead>
+				<tr>
+					<th>{escape(_("Posting Date"))}</th>
+					<th>{escape(_("Invoice ID"))}</th>
+					<th>{escape(_("Sales Person"))}</th>
+					<th>{escape(_("Mode of Payment"))}</th>
+					<th class="amount">{escape(_("Amount"))}</th>
+				</tr>
+			</thead>
+			<tbody>{rows_html}</tbody>
+		</table>
+		<table class="totals">
+			<tbody>
+				{totals_html}
+				<tr class="overall">
+					<td colspan="4">{escape(_("Overall Total"))}</td>
+					<td class="amount">{escape(fmt_money(report["total_amount"], currency=currency))}</td>
+				</tr>
+			</tbody>
+		</table>
+	</body>
+	</html>
+	"""
+	return get_pdf(html)
+
+
+@frappe.whitelist()
+def export_sales_report(
+	pos_profile,
+	from_date=None,
+	to_date=None,
+	file_type="xlsx",
+	sales_person=None,
+):
+	"""Download a payment-level POS sales report for an accessible profile."""
+	from_date, to_date = _validate_sales_report_access(
+		pos_profile,
+		from_date,
+		to_date,
+	)
+	file_type = cstr(file_type).lower()
+	if file_type not in {"xlsx", "pdf"}:
+		frappe.throw(_("Export format must be Excel or PDF"))
+
+	report = _get_sales_report_payment_export(
+		pos_profile,
+		from_date,
+		to_date,
+		sales_person=sales_person,
+	)
+	currency = (
+		frappe.db.get_value("POS Profile", pos_profile, "currency")
+		or frappe.defaults.get_global_default("currency")
+		or ""
+	)
+	filename = (
+		f"pos-sales-{scrub(pos_profile).replace('_', '-')}-{from_date}-to-{to_date}.{file_type}"
+	)
+
+	if file_type == "xlsx":
+		filecontent = _build_sales_report_xlsx(
+			report,
+			pos_profile,
+			from_date,
+			to_date,
+			currency,
+		)
+		response_type = "binary"
+	else:
+		filecontent = _build_sales_report_pdf(
+			report,
+			pos_profile,
+			from_date,
+			to_date,
+			currency,
+		)
+		response_type = "pdf"
+
+	frappe.local.response.filename = filename
+	frappe.local.response.filecontent = filecontent
+	frappe.local.response.type = response_type
+
+
+@frappe.whitelist()
+def get_sales_report(
+	pos_profile,
+	from_date=None,
+	to_date=None,
+	limit=10,
+	sales_person=None,
+):
+	"""Return POS sales report metrics for the selected profile and date range."""
+	from_date, to_date = _validate_sales_report_access(
+		pos_profile,
+		from_date,
+		to_date,
+	)
 	limit = cint(limit) or 10
 
 	params = {
@@ -1201,6 +1585,7 @@ def get_sales_report(pos_profile, from_date=None, to_date=None, limit=10):
 		"from_date": from_date,
 		"to_date": to_date,
 		"limit": limit,
+		"sales_person": cstr(sales_person).strip(),
 	}
 
 	filters = """
@@ -1208,7 +1593,33 @@ def get_sales_report(pos_profile, from_date=None, to_date=None, limit=10):
 		AND si.docstatus = 1
 		AND si.is_pos = 1
 		AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
+		AND (
+			%(sales_person)s = ''
+			OR EXISTS (
+				SELECT 1
+				FROM `tabSales Team` sales_team_filter
+				WHERE sales_team_filter.parent = si.name
+					AND sales_team_filter.parenttype = 'Sales Invoice'
+					AND sales_team_filter.sales_person = %(sales_person)s
+			)
+		)
 	"""
+
+	sales_persons = frappe.db.sql(
+		"""
+		SELECT DISTINCT sales_team.sales_person
+		FROM `tabSales Invoice` si
+		INNER JOIN `tabSales Team` sales_team
+			ON sales_team.parent = si.name
+			AND sales_team.parenttype = 'Sales Invoice'
+		WHERE si.pos_profile = %(pos_profile)s
+			AND si.docstatus = 1
+			AND si.is_pos = 1
+		ORDER BY sales_team.sales_person
+		""",
+		{"pos_profile": pos_profile},
+		as_dict=True,
+	)
 
 	summary = frappe.db.sql(
 		f"""
@@ -1324,7 +1735,17 @@ def get_sales_report(pos_profile, from_date=None, to_date=None, limit=10):
 			si.paid_amount,
 			si.outstanding_amount,
 			si.status,
-			si.is_return
+			si.is_return,
+			(
+				SELECT GROUP_CONCAT(
+					DISTINCT sales_team.sales_person
+					ORDER BY sales_team.sales_person
+					SEPARATOR ', '
+				)
+				FROM `tabSales Team` sales_team
+				WHERE sales_team.parent = si.name
+					AND sales_team.parenttype = 'Sales Invoice'
+			) AS sales_person
 		FROM `tabSales Invoice` si
 		WHERE {filters}
 		ORDER BY si.posting_date DESC, si.posting_time DESC
@@ -1351,6 +1772,9 @@ def get_sales_report(pos_profile, from_date=None, to_date=None, limit=10):
 			"items_total": flt(items_summary.get("amount")),
 		},
 		"payment_methods": payment_methods,
+		"sales_persons": [
+			row.sales_person for row in sales_persons if row.sales_person
+		],
 		"top_items": top_items,
 		"recent_invoices": recent_invoices,
 	}

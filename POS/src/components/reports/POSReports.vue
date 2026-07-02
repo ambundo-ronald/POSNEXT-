@@ -18,7 +18,7 @@
 							</div>
 						</div>
 
-						<div class="flex flex-col gap-2 sm:flex-row sm:items-end">
+						<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
 							<label class="flex flex-col gap-1">
 								<span class="text-xs font-medium text-gray-600">{{ __("From") }}</span>
 								<input
@@ -35,6 +35,22 @@
 									class="h-9 rounded-md border border-gray-300 px-3 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
 								/>
 							</label>
+							<label class="flex flex-col gap-1">
+								<span class="text-xs font-medium text-gray-600">{{ __("Sales Person") }}</span>
+								<select
+									v-model="selectedSalesPerson"
+									class="h-9 min-w-44 rounded-md border border-gray-300 bg-white px-3 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+								>
+									<option value="">{{ __("All Sales Persons") }}</option>
+									<option
+										v-for="salesPerson in salesPersons"
+										:key="salesPerson"
+										:value="salesPerson"
+									>
+										{{ salesPerson }}
+									</option>
+								</select>
+							</label>
 							<Button
 								@click="loadReport"
 								:loading="loading"
@@ -44,6 +60,28 @@
 									<FeatherIcon name="refresh-cw" class="w-4 h-4" />
 								</template>
 								{{ __("Refresh") }}
+							</Button>
+							<Button
+								@click="exportReport('xlsx')"
+								:loading="exporting === 'xlsx'"
+								:disabled="loading || Boolean(exporting)"
+								variant="outline"
+							>
+								<template #prefix>
+									<FeatherIcon name="download" class="w-4 h-4" />
+								</template>
+								{{ __("Excel") }}
+							</Button>
+							<Button
+								@click="exportReport('pdf')"
+								:loading="exporting === 'pdf'"
+								:disabled="loading || Boolean(exporting)"
+								variant="outline"
+							>
+								<template #prefix>
+									<FeatherIcon name="download" class="w-4 h-4" />
+								</template>
+								{{ __("PDF") }}
 							</Button>
 							<Button variant="ghost" @click="handleClose" icon="x">
 								<template #icon>
@@ -150,6 +188,7 @@
 											<tr>
 												<th class="px-5 py-3 text-start text-xs font-semibold text-gray-500">{{ __("Invoice") }}</th>
 												<th class="px-5 py-3 text-start text-xs font-semibold text-gray-500">{{ __("Customer") }}</th>
+												<th class="px-5 py-3 text-start text-xs font-semibold text-gray-500">{{ __("Sales Person") }}</th>
 												<th class="px-5 py-3 text-start text-xs font-semibold text-gray-500">{{ __("Date") }}</th>
 												<th class="px-5 py-3 text-end text-xs font-semibold text-gray-500">{{ __("Total") }}</th>
 												<th class="px-5 py-3 text-end text-xs font-semibold text-gray-500">{{ __("Outstanding") }}</th>
@@ -169,6 +208,7 @@
 													</div>
 												</td>
 												<td class="px-5 py-3 text-sm text-gray-700">{{ invoice.customer_name || invoice.customer }}</td>
+												<td class="px-5 py-3 text-sm text-gray-700">{{ invoice.sales_person || __("Unassigned") }}</td>
 												<td class="px-5 py-3 text-sm text-gray-600">{{ formatDate(invoice.posting_date) }}</td>
 												<td class="px-5 py-3 text-sm font-semibold text-end text-gray-900">{{ formatCurrency(invoice.grand_total) }}</td>
 												<td class="px-5 py-3 text-sm font-semibold text-end text-orange-600">{{ formatCurrency(invoice.outstanding_amount) }}</td>
@@ -190,6 +230,7 @@
 
 <script setup>
 import { useFormatters } from "@/composables/useFormatters"
+import { useToast } from "@/composables/useToast"
 import { call } from "@/utils/apiWrapper"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { Button, FeatherIcon } from "frappe-ui"
@@ -207,16 +248,20 @@ const props = defineProps({
 const emit = defineEmits(["update:modelValue"])
 
 const { formatDate } = useFormatters()
+const { showError, showWarning } = useToast()
 
 const show = ref(props.modelValue)
 const loading = ref(false)
+const exporting = ref("")
 const report = ref(null)
 const fromDate = ref(getToday())
 const toDate = ref(getToday())
+const selectedSalesPerson = ref("")
 
 const hasReport = computed(() => Boolean(report.value))
 const summary = computed(() => report.value?.summary || {})
 const paymentMethods = computed(() => report.value?.payment_methods || [])
+const salesPersons = computed(() => report.value?.sales_persons || [])
 const topItems = computed(() => report.value?.top_items || [])
 const recentInvoices = computed(() => report.value?.recent_invoices || [])
 
@@ -237,7 +282,9 @@ const metrics = computed(() => [
 		key: "paid",
 		label: __("Collected"),
 		value: formatCurrency(summary.value.paid_amount),
-		caption: __("Outstanding {0}", [formatCurrency(summary.value.outstanding_amount)]),
+		caption: __("Outstanding {0}", [
+			formatCurrency(summary.value.outstanding_amount),
+		]),
 		icon: "credit-card",
 		iconBg: "bg-blue-100",
 		iconColor: "text-blue-600",
@@ -258,7 +305,9 @@ const metrics = computed(() => [
 		key: "items",
 		label: __("Items Sold"),
 		value: formatNumber(summary.value.quantity),
-		caption: __("Discounts {0}", [formatCurrency(summary.value.discount_amount)]),
+		caption: __("Discounts {0}", [
+			formatCurrency(summary.value.discount_amount),
+		]),
 		icon: "shopping-bag",
 		iconBg: "bg-purple-100",
 		iconColor: "text-purple-600",
@@ -293,6 +342,7 @@ function handleClose() {
 
 async function loadReport() {
 	if (!props.posProfile) return
+	if (!validateDateRange()) return
 
 	loading.value = true
 	try {
@@ -300,6 +350,7 @@ async function loadReport() {
 			pos_profile: props.posProfile,
 			from_date: fromDate.value,
 			to_date: toDate.value,
+			sales_person: selectedSalesPerson.value,
 			limit: 10,
 		})
 	} catch (error) {
@@ -307,6 +358,60 @@ async function loadReport() {
 		report.value = null
 	} finally {
 		loading.value = false
+	}
+}
+
+function validateDateRange() {
+	if (!fromDate.value || !toDate.value) {
+		showWarning(__("Select both From and To dates"))
+		return false
+	}
+	if (fromDate.value > toDate.value) {
+		showWarning(__("From Date cannot be after To Date"))
+		return false
+	}
+	return true
+}
+
+async function exportReport(fileType) {
+	if (!props.posProfile || !validateDateRange() || exporting.value) return
+
+	exporting.value = fileType
+	try {
+		const params = new URLSearchParams({
+			pos_profile: props.posProfile,
+			from_date: fromDate.value,
+			to_date: toDate.value,
+			file_type: fileType,
+			sales_person: selectedSalesPerson.value,
+		})
+		const response = await fetch(
+			`/api/method/pos_next.api.invoices.export_sales_report?${params.toString()}`,
+			{ credentials: "same-origin" },
+		)
+		if (!response.ok) {
+			throw new Error(__("The report could not be exported"))
+		}
+
+		const blob = await response.blob()
+		const safeProfile = props.posProfile
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-|-$/g, "")
+		const filename = `pos-sales-${safeProfile || "report"}-${fromDate.value}-to-${toDate.value}.${fileType}`
+		const objectUrl = URL.createObjectURL(blob)
+		const link = document.createElement("a")
+		link.href = objectUrl
+		link.download = filename
+		document.body.appendChild(link)
+		link.click()
+		link.remove()
+		window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+	} catch (error) {
+		console.error("Failed to export POS report:", error)
+		showError(error.message || __("The report could not be exported"))
+	} finally {
+		exporting.value = ""
 	}
 }
 
