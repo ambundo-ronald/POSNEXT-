@@ -44,6 +44,84 @@ except Exception:  # pragma: no cover - ERPNext not installed in some environmen
 CLIENT_TRANSACTION_FIELD = "posa_client_transaction_id"
 
 
+def _has_custom_company(doctype):
+    return frappe.db.has_column(doctype, "custom_company")
+
+
+def _validate_pos_profile_company_scope(invoice_doc, pos_profile_doc):
+    if not pos_profile_doc or not getattr(pos_profile_doc, "company", None):
+        return
+
+    company = pos_profile_doc.company
+
+    if invoice_doc.get("company") and invoice_doc.company != company:
+        frappe.throw(
+            _("POS Profile {0} belongs to {1}, but invoice company is {2}.").format(
+                pos_profile_doc.name,
+                company,
+                invoice_doc.company,
+            )
+        )
+
+    invoice_doc.company = company
+
+    customer = invoice_doc.get("customer")
+    if customer and _has_custom_company("Customer"):
+        customer_company = frappe.db.get_value("Customer", customer, "custom_company")
+        if customer_company and customer_company != company:
+            frappe.throw(
+                _("Customer {0} belongs to company {1}, not {2}.").format(
+                    customer,
+                    customer_company,
+                    company,
+                )
+            )
+
+    item_codes = [item.get("item_code") for item in invoice_doc.get("items", []) if item.get("item_code")]
+    if item_codes and _has_custom_company("Item"):
+        item_companies = frappe.get_all(
+            "Item",
+            filters={"name": ["in", item_codes]},
+            fields=["name", "custom_company"],
+        )
+        blocked_items = [
+            row
+            for row in item_companies
+            if row.get("custom_company") and row.get("custom_company") != company
+        ]
+        if blocked_items:
+            item_labels = ", ".join(
+                f"{row.name} ({row.custom_company})" for row in blocked_items
+            )
+            frappe.throw(
+                _("These items do not belong to company {0}: {1}").format(
+                    company,
+                    item_labels,
+                )
+            )
+
+    warehouses = [item.get("warehouse") for item in invoice_doc.get("items", []) if item.get("warehouse")]
+    if warehouses:
+        warehouse_companies = frappe.get_all(
+            "Warehouse",
+            filters={"name": ["in", list(set(warehouses))]},
+            fields=["name", "company"],
+        )
+        blocked_warehouses = [
+            row for row in warehouse_companies if row.get("company") and row.get("company") != company
+        ]
+        if blocked_warehouses:
+            warehouse_labels = ", ".join(
+                f"{row.name} ({row.company})" for row in blocked_warehouses
+            )
+            frappe.throw(
+                _("These warehouses do not belong to company {0}: {1}").format(
+                    company,
+                    warehouse_labels,
+                )
+            )
+
+
 def _invoice_submission_response(invoice_doc):
     return {
         "name": invoice_doc.name,
@@ -580,6 +658,8 @@ def update_invoice(data):
                 for item in invoice_doc.get("items", []):
                     item.branch = pos_profile_doc.branch
 
+            _validate_pos_profile_company_scope(invoice_doc, pos_profile_doc)
+
         company = invoice_doc.get("company") or (
             pos_profile_doc.company if pos_profile_doc else None
         )
@@ -849,6 +929,7 @@ def submit_invoice(invoice=None, data=None):
         invoice_doc.update_stock = 1
 
         # Copy accounting dimensions from POS Profile if not already set
+        pos_profile_doc = None
         if pos_profile and not invoice_doc.get("branch"):
             try:
                 pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
@@ -860,6 +941,10 @@ def submit_invoice(invoice=None, data=None):
                             item.branch = pos_profile_doc.branch
             except Exception:
                 pass  # Branch is optional, continue without it
+        elif pos_profile:
+            pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+
+        _validate_pos_profile_company_scope(invoice_doc, pos_profile_doc)
 
         normalize_pos_invoice_payments(invoice_doc, invoice_doc.company)
 

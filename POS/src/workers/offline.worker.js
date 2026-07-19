@@ -466,114 +466,57 @@ async function updateLocalStock(items) {
  * @param {number} limit - Max results
  * @returns {Promise<Array>} Matching items
  */
-async function searchCachedItems(searchTerm = "", limit = 50) {
+async function searchCachedItems(searchTerm = "", limit = 50, posProfile = null) {
 	const startTime = performance.now()
-
-	// Check cache first (5-10x faster for repeated queries)
-	const cacheKey = `search:${searchTerm}:${limit}`
+	const normalizedLimit = limit || 50
+	const term = (searchTerm || "").toLowerCase().trim()
+	const cacheKey = `search:${posProfile || "all"}:${term}:${normalizedLimit}`
 	const cached = getCachedQuery(cacheKey)
 	if (cached) {
-		log.debug("Cache hit for search", { searchTerm })
+		log.debug("Cache hit for search", { searchTerm, posProfile })
 		return cached
 	}
 
 	try {
 		const db = await initDB()
+		const table = db.table("items")
+		const scopedItems = posProfile
+			? await table.where("pos_profile").equals(posProfile).toArray()
+			: await table.toArray()
 
-		// Empty search - return top N items (excluding disabled items)
-		if (!searchTerm || searchTerm.trim().length === 0) {
-			const results = await db.table("items")
-				.filter(item => !item.disabled)
-				.limit(limit)
-				.toArray()
+		const activeItems = scopedItems.filter((item) => !item.disabled)
+		if (!term) {
+			const results = activeItems.slice(0, normalizedLimit)
 			cacheQueryResult(cacheKey, results)
 			return results
 		}
 
-		const term = searchTerm.toLowerCase().trim()
-		const searchWords = term.split(/\s+/).filter(Boolean)
+		const results = activeItems
+			.map((item) => {
+				const itemCode = (item.item_code || "").toLowerCase()
+				const itemName = (item.item_name || "").toLowerCase()
+				const description = (item.description || "").toLowerCase()
+				const barcodes = Array.isArray(item.barcodes) ? item.barcodes.map((barcode) => String(barcode).toLowerCase()) : []
 
-		// Optimize: Use indexes for single-word searches
-		if (searchWords.length === 1) {
-			// Try barcode index first (most specific)
-			const barcodeResults = await db.table("items")
-				.where("barcodes")
-				.equals(term)
-				.filter(item => !item.disabled)
-				.limit(limit)
-				.toArray()
+				let score = 0
+				if (barcodes.includes(term)) score = 1000
+				else if (itemCode === term) score = 900
+				else if (itemName === term) score = 800
+				else if (itemCode.startsWith(term)) score = 700
+				else if (itemName.startsWith(term)) score = 600
+				else if (itemCode.includes(term) || itemName.includes(term) || description.includes(term)) score = 100
 
-			if (barcodeResults.length > 0) {
-				cacheQueryResult(cacheKey, barcodeResults)
-				recordMetric('searchCachedItems', performance.now() - startTime, false)
-				return barcodeResults
-			}
-
-			// Try item_code index (second most specific)
-			const codeResults = await db.table("items")
-				.where("item_code")
-				.startsWithIgnoreCase(term)
-				.filter(item => !item.disabled)
-				.limit(limit)
-				.toArray()
-
-			if (codeResults.length > 0) {
-				cacheQueryResult(cacheKey, codeResults)
-				recordMetric('searchCachedItems', performance.now() - startTime, false)
-				return codeResults
-			}
-
-			// Try item_name index
-			const nameResults = await db.table("items")
-				.where("item_name")
-				.startsWithIgnoreCase(term)
-				.filter(item => !item.disabled)
-				.limit(limit)
-				.toArray()
-
-			if (nameResults.length > 0) {
-				cacheQueryResult(cacheKey, nameResults)
-				recordMetric('searchCachedItems', performance.now() - startTime, false)
-				return nameResults
-			}
-		}
-
-		// Fallback: Multi-word or complex search
-		// Fetch larger sample and filter in memory (trade memory for speed)
-		const allItems = await db.table("items")
-			.filter(item => !item.disabled)
-			.limit(limit * 10)
-			.toArray()
-
-		const results = allItems
-			.map(item => {
-				const searchable = `${item.item_code || ""} ${item.item_name || ""} ${item.description || ""}`.toLowerCase()
-
-				// All words must match
-				if (!searchWords.every(word => searchable.includes(word))) {
-					return null
-				}
-
-				// Score for relevance ranking
-				let score = 100
-				if (item.item_name?.toLowerCase() === term) score = 1000
-				else if (item.item_code?.toLowerCase() === term) score = 900
-				else if (item.item_name?.toLowerCase().startsWith(term)) score = 500
-				else if (item.item_code?.toLowerCase().startsWith(term)) score = 400
-
-				return { item, score }
+				return score ? { item, score } : null
 			})
 			.filter(Boolean)
 			.sort((a, b) => b.score - a.score)
-			.slice(0, limit)
+			.slice(0, normalizedLimit)
 			.map(({ item }) => item)
 
 		const duration = Math.round(performance.now() - startTime)
 		recordMetric('searchCachedItems', duration, false)
-
 		cacheQueryResult(cacheKey, results)
 		return results
-
 	} catch (error) {
 		recordMetric('searchCachedItems', performance.now() - startTime, true)
 		log.error("Error searching cached items", error)
@@ -582,20 +525,24 @@ async function searchCachedItems(searchTerm = "", limit = 50) {
 }
 
 // Search cached customers
-async function searchCachedCustomers(searchTerm = "", limit = 20) {
+async function searchCachedCustomers(searchTerm = "", limit = 20, posProfile = null) {
 	try {
 		const db = await initDB()
 		const term = searchTerm.toLowerCase()
+		const table = db.table("customers")
+		const scopedCustomers = posProfile
+			? table.where("pos_profile").equals(posProfile)
+			: table
 
 		if (!term) {
 			return limit > 0
-				? await db.table("customers").limit(limit).toArray()
-				: await db.table("customers").toArray()
+				? await scopedCustomers.limit(limit).toArray()
+				: await scopedCustomers.toArray()
 		}
 
 		// Get all customers and filter in memory for 'includes' behavior
 		// This is fast because IndexedDB is already in-memory for small datasets
-		const allCustomers = await db.table("customers").toArray()
+		const allCustomers = await scopedCustomers.toArray()
 
 		const results = allCustomers
 			.filter((cust) => {
@@ -621,7 +568,7 @@ async function searchCachedCustomers(searchTerm = "", limit = 20) {
  * @param {Array<Object>} items - Items to cache
  * @returns {Promise<Object>} Result with count and timing
  */
-async function cacheItemsFromServer(items) {
+async function cacheItemsFromServer(items, posProfile = null) {
 	if (!items || items.length === 0) {
 		return { success: true, count: 0, duration: 0 }
 	}
@@ -641,6 +588,7 @@ async function cacheItemsFromServer(items) {
 				// Normalize data using helper (zero-copy where possible)
 				const processedItems = batch.map(item => ({
 					...item,
+					pos_profile: posProfile || item.pos_profile || "",
 					barcodes: extractBarcodes(item),
 				}))
 
@@ -742,7 +690,7 @@ async function cacheItemsFromServer(items) {
  * @param {Array<Object>} customers - Customers to cache
  * @returns {Promise<Object>} Result
  */
-async function cacheCustomersFromServer(customers) {
+async function cacheCustomersFromServer(customers, posProfile = null) {
 	if (!customers || customers.length === 0) {
 		return { success: true, count: 0, duration: 0 }
 	}
@@ -757,7 +705,11 @@ async function cacheCustomersFromServer(customers) {
 			// Batch insert in chunks
 			const batches = chunkArray(customers, CONFIG.BATCH_SIZE)
 			for (const batch of batches) {
-				await db.table("customers").bulkPut(batch)
+				const processedCustomers = batch.map((customer) => ({
+					...customer,
+					pos_profile: posProfile || customer.pos_profile || "",
+				}))
+				await db.table("customers").bulkPut(processedCustomers)
 			}
 
 			// Update metadata
@@ -1316,19 +1268,19 @@ self.onmessage = async (event) => {
 				break
 
 			case "SEARCH_ITEMS":
-				result = await searchCachedItems(payload.searchTerm, payload.limit)
+				result = await searchCachedItems(payload.searchTerm, payload.limit, payload.posProfile)
 				break
 
 			case "SEARCH_CUSTOMERS":
-				result = await searchCachedCustomers(payload.searchTerm, payload.limit)
+				result = await searchCachedCustomers(payload.searchTerm, payload.limit, payload.posProfile)
 				break
 
 			case "CACHE_ITEMS":
-				result = await cacheItemsFromServer(payload.items)
+				result = await cacheItemsFromServer(payload.items, payload.posProfile)
 				break
 
 			case "CACHE_CUSTOMERS":
-				result = await cacheCustomersFromServer(payload.customers)
+				result = await cacheCustomersFromServer(payload.customers, payload.posProfile)
 				break
 
 			case "CLEAR_ITEMS_CACHE":

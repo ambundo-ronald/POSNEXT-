@@ -368,6 +368,7 @@ def search_by_barcode(barcode, pos_profile, customer=None, customer_group=None, 
 
 		# Get item doc
 		item_doc = frappe.get_cached_doc("Item", item_code)
+		_validate_item_company(item_doc, pos_profile_doc)
 
 		# Check if item is allowed for sales
 		if not item_doc.is_sales_item:
@@ -486,6 +487,9 @@ def get_item_variants(template_item, pos_profile, customer=None, customer_group=
 	"""Get all variants for a template item with prices and stock"""
 	try:
 		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+		template_doc = frappe.get_cached_doc("Item", template_item)
+		_validate_item_company(template_doc, pos_profile_doc)
+
 		customer, customer_group = parse_customer_context(customer, customer_group)
 		effective_price_list = price_list or resolve_profile_selling_price_list(
 			pos_profile_doc,
@@ -645,6 +649,24 @@ def _build_item_base_conditions(pos_profile_doc, item_group=None):
 		params.append(item_group)
 
 	return conditions, params
+
+
+def _item_company_matches_profile(item_doc, pos_profile_doc):
+	"""Return true when an item is global or belongs to the POS Profile company."""
+	item_company = getattr(item_doc, "custom_company", None)
+	profile_company = getattr(pos_profile_doc, "company", None)
+	return not item_company or item_company == profile_company
+
+
+def _validate_item_company(item_doc, pos_profile_doc):
+	if not _item_company_matches_profile(item_doc, pos_profile_doc):
+		frappe.throw(
+			_("Item {0} belongs to company {1}, not {2}.").format(
+				item_doc.name,
+				item_doc.custom_company,
+				pos_profile_doc.company,
+			)
+		)
 
 
 def _calculate_bundle_availability_bulk(bundle_codes, warehouse):
@@ -1171,16 +1193,23 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 			# 3) If still not found and it's a template, derive min variant price
 			derived_price = None
 			if not price_row and item.get("has_variants"):
+				variant_company_condition = ""
+				variant_price_params = [item["item_code"], effective_price_list]
+				if pos_profile_doc.company:
+					variant_company_condition = "AND IFNULL(i.custom_company, '') IN (%s, '')"
+					variant_price_params.append(pos_profile_doc.company)
+
 				variant_prices = frappe.db.sql(
-					"""
+					f"""
 					SELECT MIN(ip.price_list_rate) as min_price
 					FROM `tabItem Price` ip
 					INNER JOIN `tabItem` i ON i.name = ip.item_code
 					WHERE i.variant_of = %s
 					AND ip.price_list = %s
 					AND i.disabled = 0
+					{variant_company_condition}
 					""",
-					[item["item_code"], effective_price_list],
+					variant_price_params,
 					as_dict=1,
 				)
 				derived_price = (
@@ -1308,6 +1337,7 @@ def get_item_details(item_code, pos_profile, customer=None, customer_group=None,
 			warehouse=pos_profile_doc.warehouse,
 		)
 		item_doc = frappe.get_cached_doc("Item", item_code)
+		_validate_item_company(item_doc, pos_profile_doc)
 
 		# Check if item is allowed for sales
 		if not item_doc.is_sales_item:
@@ -1523,15 +1553,22 @@ def get_item_warehouse_availability(item_code=None, item_codes=None, company=Non
 		elif item_code:
 			# Check if item exists
 			item_doc = frappe.get_cached_doc("Item", item_code)
+			item_company = getattr(item_doc, "custom_company", None)
+			if company and item_company and item_company != company:
+				return []
 
 			# Determine which items to check stock for
 			items_to_check = [item_code]
 
 			# If this is a template item, include all its variants
 			if item_doc.has_variants:
+				variant_filters = {"variant_of": item_code, "disabled": 0}
+				if company:
+					variant_filters["custom_company"] = ["in", [company, ""]]
+
 				variants = frappe.get_all(
 					"Item",
-					filters={"variant_of": item_code, "disabled": 0},
+					filters=variant_filters,
 					fields=["name"]
 				)
 				items_to_check.extend([v.name for v in variants])

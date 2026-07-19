@@ -72,13 +72,13 @@ export function useOffline() {
 	}
 
 	// Cache data using worker
-	const cacheData = async (items, customers) => {
+	const cacheData = async (items, customers, posProfile = null) => {
 		try {
 			if (items && items.length > 0) {
-				await offlineWorker.cacheItems(items)
+				await offlineWorker.cacheItems(items, posProfile)
 			}
 			if (customers && customers.length > 0) {
-				await offlineWorker.cacheCustomers(customers)
+				await offlineWorker.cacheCustomers(customers, posProfile)
 			}
 			return true
 		} catch (error) {
@@ -88,13 +88,13 @@ export function useOffline() {
 	}
 
 	// Search cached items using worker
-	const searchItems = async (searchTerm, limit = 50) => {
-		return await offlineWorker.searchCachedItems(searchTerm, limit)
+	const searchItems = async (searchTerm, limit = 50, posProfile = null) => {
+		return await offlineWorker.searchCachedItems(searchTerm, limit, posProfile)
 	}
 
 	// Search cached customers using worker
-	const searchCustomers = async (searchTerm, limit = 20) => {
-		return await offlineWorker.searchCachedCustomers(searchTerm, limit)
+	const searchCustomers = async (searchTerm, limit = 20, posProfile = null) => {
+		return await offlineWorker.searchCachedCustomers(searchTerm, limit, posProfile)
 	}
 
 	// Check if cache is ready using worker

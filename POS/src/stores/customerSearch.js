@@ -213,6 +213,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
                         const cachedCustomers = await offlineWorker.searchCachedCustomers(
                                 "",
                                 0,
+                                posProfile,
                         )
 
 			if (cachedCustomers && cachedCustomers.length > 0) {
@@ -233,7 +234,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 
 				// Cache for future use
 				if (list.length) {
-					await offlineWorker.cacheCustomers(list)
+					await offlineWorker.cacheCustomers(list, posProfile)
 				}
 				console.log(`✓ Loaded ${list.length} customers from server`)
 			} else {
@@ -253,16 +254,18 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 		}
 	}
 
-	async function addCustomerToCache(customer) {
+	async function addCustomerToCache(customer, posProfile = null) {
 		try {
+			const scopedCustomer = { ...customer, pos_profile: posProfile || customer.pos_profile || "" }
+
 			// Add to local array
 			const existingWithoutNew = allCustomers.value.filter(
 				(cust) => cust.name !== customer.name,
 			)
-			allCustomers.value = [customer, ...existingWithoutNew]
+			allCustomers.value = [scopedCustomer, ...existingWithoutNew]
 
 			// Cache in worker
-			await offlineWorker.cacheCustomers([customer])
+			await offlineWorker.cacheCustomers([scopedCustomer], scopedCustomer.pos_profile)
 
 			// Clear result cache to include new customer
 			resultCache.value.clear()
