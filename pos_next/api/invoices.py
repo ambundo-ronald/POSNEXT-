@@ -18,7 +18,6 @@ from frappe.utils import (
     getdate,
     nowdate,
     nowtime,
-    scrub,
 )
 from erpnext.stock.doctype.batch.batch import get_batch_qty, get_batch_no
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
@@ -1537,7 +1536,7 @@ def export_sales_report(
 		or ""
 	)
 	filename = (
-		f"pos-sales-{scrub(pos_profile).replace('_', '-')}-{from_date}-to-{to_date}.{file_type}"
+		f"pos-sales-{frappe.scrub(pos_profile).replace('_', '-')}-{from_date}-to-{to_date}.{file_type}"
 	)
 
 	if file_type == "xlsx":
