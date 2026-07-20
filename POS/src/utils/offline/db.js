@@ -42,10 +42,10 @@ const CURRENT_SCHEMA = {
 	invoice_queue: "++id, timestamp, synced",
 
 	// Items cache with searchable fields
-	items: "&[pos_profile+item_code], item_code, pos_profile, item_name, item_group, *barcodes",
+	items: "&item_code, item_name, item_group, *barcodes",
 
 	// Customers cache
-	customers: "&[pos_profile+name], name, pos_profile, customer_name, mobile_no, email_id",
+	customers: "&name, customer_name, mobile_no, email_id",
 
 	// Price list cache
 	item_prices: "&[price_list+item_code], price_list, item_code",

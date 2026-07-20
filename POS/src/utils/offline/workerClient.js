@@ -399,20 +399,20 @@ class OfflineWorkerClient {
 		return this.sendMessage("SAVE_INVOICE", { invoiceData })
 	}
 
-	async searchCachedItems(searchTerm = "", limit = 50, posProfile = null) {
-		return this.sendMessage("SEARCH_ITEMS", { searchTerm, limit, posProfile })
+	async searchCachedItems(searchTerm = "", limit = 50) {
+		return this.sendMessage("SEARCH_ITEMS", { searchTerm, limit })
 	}
 
-	async searchCachedCustomers(searchTerm = "", limit = 20, posProfile = null) {
-		return this.sendMessage("SEARCH_CUSTOMERS", { searchTerm, limit, posProfile })
+	async searchCachedCustomers(searchTerm = "", limit = 20) {
+		return this.sendMessage("SEARCH_CUSTOMERS", { searchTerm, limit })
 	}
 
-	async cacheItems(items, posProfile = null) {
-		return this.sendMessage("CACHE_ITEMS", { items, posProfile })
+	async cacheItems(items) {
+		return this.sendMessage("CACHE_ITEMS", { items })
 	}
 
-	async cacheCustomers(customers, posProfile = null) {
-		return this.sendMessage("CACHE_CUSTOMERS", { customers, posProfile })
+	async cacheCustomers(customers) {
+		return this.sendMessage("CACHE_CUSTOMERS", { customers })
 	}
 
 	async cachePaymentMethods(paymentMethods) {

@@ -153,7 +153,6 @@ export function useItems(posProfile, cartItems = ref([])) {
 				const cached = await offlineWorker.searchCachedItems(
 					searchTerm.value,
 					100,
-					toValue(posProfile),
 				)
 				items.value = cached || []
 			} catch (error) {
@@ -173,7 +172,7 @@ export function useItems(posProfile, cartItems = ref([])) {
 		try {
 			const cacheReady = await offlineWorker.isCacheReady()
 			if (isOffline() || cacheReady) {
-				const items = await offlineWorker.searchCachedItems(itemCode, 1, toValue(posProfile))
+				const items = await offlineWorker.searchCachedItems(itemCode, 1)
 				return items?.[0] || null
 			} else {
 				// Fallback to server (implement if needed)

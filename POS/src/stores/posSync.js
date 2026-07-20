@@ -150,13 +150,13 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	 * @param {Array} items - Items to cache
 	 * @param {Array} customers - Customers to cache
 	 */
-	async function cacheData(items, customers, posProfile = null) {
+	async function cacheData(items, customers) {
 		try {
 			if (items?.length > 0) {
-				await offlineWorker.cacheItems(items, posProfile)
+				await offlineWorker.cacheItems(items)
 			}
 			if (customers?.length > 0) {
-				await offlineWorker.cacheCustomers(customers, posProfile)
+				await offlineWorker.cacheCustomers(customers)
 			}
 			return true
 		} catch (error) {
@@ -275,7 +275,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 				showSuccess(__("Loading customers for offline use..."))
 
 				const customersData = await cacheCustomersFromServer(currentProfile.name)
-				await cacheData([], customersData.customers || [], currentProfile.name)
+				await cacheData([], customersData.customers || [])
 
 				showSuccess(__("Data is ready for offline use"))
 			}

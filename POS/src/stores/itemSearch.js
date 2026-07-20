@@ -144,7 +144,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			const items = await fetchItemsFromGroups(profile, groupObjects)
 
 			if (items.length > 0) {
-				await offlineWorker.cacheItems(items, profile)
+				await offlineWorker.cacheItems(items)
 				log.success(`Cached ${items.length} items from ${groups.length} group(s)`)
 				return items.length
 			}
@@ -661,7 +661,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 						// Filters active: Load everything (client-side filtering needs all data)
 						// No filters: Load first page only (infinite scroll will load more)
 						const limit = hasFilters ? 10000 : itemsPerPage.value
-						const cached = await offlineWorker.searchCachedItems("", limit, profile)
+						const cached = await offlineWorker.searchCachedItems("", limit)
 
 						if (cached && cached.length > 0) {
 							replaceAllItems(cached)
@@ -698,7 +698,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					// Load limit based on filter configuration
 					// Same logic as offline mode - filters need all data
 					const limit = hasFilters ? 10000 : itemsPerPage.value
-					const cached = await offlineWorker.searchCachedItems("", limit, profile)
+					const cached = await offlineWorker.searchCachedItems("", limit)
 
 					if (cached && cached.length > 0) {
 						replaceAllItems(cached)
@@ -753,7 +753,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				if (fetchedItems.length > 0) {
 					// Clear cache first to remove any disabled/stale items, then cache fresh data
 					await offlineWorker.clearItemsCache()
-					await offlineWorker.cacheItems(fetchedItems, profile)
+					await offlineWorker.cacheItems(fetchedItems)
 					cacheReady.value = true
 
 					// Mark data as fresh - prevents redundant fetches on page refresh
@@ -796,7 +796,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 					// Clear cache first to remove any disabled/stale items, then cache fresh data
 					await offlineWorker.clearItemsCache()
-					await offlineWorker.cacheItems(list, profile)
+					await offlineWorker.cacheItems(list)
 
 					// Mark data as fresh
 					serverDataFresh.value = true
@@ -816,7 +816,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 			// Fallback to cache
 			try {
-				const cached = await offlineWorker.searchCachedItems("", itemsPerPage.value, posProfile.value)
+				const cached = await offlineWorker.searchCachedItems("", itemsPerPage.value)
 				replaceAllItems(cached || [])
 				totalItemsLoaded.value = cached?.length || 0
 				currentOffset.value = cached?.length || 0
@@ -992,7 +992,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				hasMore.value = list.length === itemsPerPage.value
 
 				// Cache new batch for offline support
-				await offlineWorker.cacheItems(list, posProfile.value)
+				await offlineWorker.cacheItems(list)
 
 				log.debug(`Loaded ${list.length} more items, total: ${totalItemsLoaded.value}`)
 			} else {
@@ -1063,7 +1063,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 				if (list.length > 0) {
 					// Cache the batch
-					await offlineWorker.cacheItems(list, posProfile.value)
+					await offlineWorker.cacheItems(list)
 					offset += list.length
 					batchCount++
 
@@ -1156,7 +1156,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					// 3. Then search server for fresh results in background
 
 					log.debug(`Searching cache for: "${term}"`)
-					const cached = await offlineWorker.searchCachedItems(term, searchLimit, posProfile.value)
+					const cached = await offlineWorker.searchCachedItems(term, searchLimit)
 
 					if (cached && cached.length > 0) {
 						// Show cached results immediately (instant!)
@@ -1186,7 +1186,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 						log.success(`Found ${serverResults.length} items on server`)
 
 						// Cache server results for future searches
-						await offlineWorker.cacheItems(serverResults, posProfile.value)
+						await offlineWorker.cacheItems(serverResults)
 
 						// If we didn't resolve with cache, resolve with server results
 						if (!cached || cached.length === 0) {
@@ -1203,7 +1203,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					// If we haven't shown cache results yet, try cache as fallback
 					if (!searchResults.value || searchResults.value.length === 0) {
 						try {
-							const cached = await offlineWorker.searchCachedItems(term, searchLimit, posProfile.value)
+							const cached = await offlineWorker.searchCachedItems(term, searchLimit)
 							setSearchResults(cached || [])
 							resolve(cached || [])
 							log.info(`Fallback: found ${cached?.length || 0} items in cache`)
@@ -1253,7 +1253,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		try {
 			const cacheReady = await offlineWorker.isCacheReady()
 			if (isOffline() || cacheReady) {
-				const items = await offlineWorker.searchCachedItems(itemCode, 1, posProfile.value)
+				const items = await offlineWorker.searchCachedItems(itemCode, 1)
 				return items?.[0] || null
 			} else {
 				// Fallback to server (implement if needed)

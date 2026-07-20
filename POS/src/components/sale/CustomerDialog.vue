@@ -284,7 +284,7 @@ function createNewCustomer() {
 
 async function handleCustomerCreated(customer) {
 	if (props.posProfile) {
-		await customerStore.addCustomerToCache(customer, props.posProfile)
+		await customerStore.addCustomerToCache(customer)
 	}
 
 	// Track new customer selection

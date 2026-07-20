@@ -7,42 +7,14 @@ import frappe
 from frappe import _
 
 
-CUSTOMER_COMPANY_FIELD = "custom_company"
-
-
-def _customer_has_company_field():
-    return frappe.db.has_column("Customer", CUSTOMER_COMPANY_FIELD)
-
-
-def _get_pos_profile_doc(pos_profile):
-    if not pos_profile:
-        return None
-
-    if isinstance(pos_profile, dict):
-        pos_profile = pos_profile.get("name") or pos_profile.get("pos_profile")
-
-    if not pos_profile:
-        return None
-
-    return frappe.get_cached_doc("POS Profile", pos_profile)
-
-
-def _get_pos_customer_scope(profile_doc):
-    if not profile_doc:
-        return None, None
-
-    return profile_doc.company, getattr(profile_doc, "customer", None)
-
-
 @frappe.whitelist()
 def get_customers(search_term="", pos_profile=None, start=0, limit=20):
-
     """
     Search customers for inline customer selection in POS.
 
     Args:
         search_term (str): Search query (name, mobile, or customer ID)
-        pos_profile (str): POS Profile to filter by customer group
+        pos_profile (str): POS Profile to filter by customer group and company
         start (int): Offset for paginated results
         limit (int): Maximum number of results to return
 
@@ -54,18 +26,21 @@ def get_customers(search_term="", pos_profile=None, start=0, limit=20):
             f"get_customers called with search_term={search_term}, pos_profile={pos_profile}, limit={limit}"
         )
 
-        filters = {"disabled": 0}
-        params = {}
         conditions = ["c.disabled = 0"]
-        profile_doc = _get_pos_profile_doc(pos_profile)
-        company, default_customer = _get_pos_customer_scope(profile_doc)
+        params = {}
+        company = None
+        default_customer = None
 
-        # Filter by POS Profile customer group if specified
-        if profile_doc and getattr(profile_doc, "customer_group", None):
-            filters["customer_group"] = profile_doc.customer_group
-            conditions.append("c.customer_group = %(customer_group)s")
-            params["customer_group"] = profile_doc.customer_group
-            frappe.logger().debug(f"Filtering by customer_group: {profile_doc.customer_group}")
+        if pos_profile:
+            frappe.logger().debug(f"Loading POS Profile: {pos_profile}")
+            profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+            company = profile_doc.company
+            default_customer = getattr(profile_doc, "customer", None)
+
+            if hasattr(profile_doc, "customer_group") and profile_doc.customer_group:
+                conditions.append("c.customer_group = %(customer_group)s")
+                params["customer_group"] = profile_doc.customer_group
+                frappe.logger().debug(f"Filtering by customer_group: {profile_doc.customer_group}")
 
         if search_term:
             conditions.append(
@@ -80,8 +55,14 @@ def get_customers(search_term="", pos_profile=None, start=0, limit=20):
 
         if company:
             params["company"] = company
-            params["default_customer"] = default_customer or ""
             company_conditions = [
+                """EXISTS (
+                    SELECT 1
+                    FROM `tabParty Account` pa
+                    WHERE pa.parenttype = 'Customer'
+                        AND pa.parent = c.name
+                        AND pa.company = %(company)s
+                )""",
                 """EXISTS (
                     SELECT 1
                     FROM `tabSales Invoice` si
@@ -92,28 +73,25 @@ def get_customers(search_term="", pos_profile=None, start=0, limit=20):
             ]
 
             if default_customer:
+                params["default_customer"] = default_customer
                 company_conditions.append("c.name = %(default_customer)s")
-
-            if _customer_has_company_field():
-                company_conditions.append(f"c.{CUSTOMER_COMPANY_FIELD} = %(company)s")
 
             conditions.append(f"({' OR '.join(company_conditions)})")
 
-        customer_limit = int(limit or 0)
-        if customer_limit <= 0:
-            customer_limit = None
-
-        fields = ["c.name", "c.customer_name", "c.mobile_no", "c.email_id", "c.customer_group"]
-        if _customer_has_company_field():
-            fields.append(f"c.{CUSTOMER_COMPANY_FIELD}")
-
         query = f"""
-            SELECT {', '.join(fields)}
+            SELECT
+                c.name,
+                c.customer_name,
+                c.mobile_no,
+                c.email_id,
+                c.customer_group
             FROM `tabCustomer` c
             WHERE {' AND '.join(conditions)}
             ORDER BY c.customer_name ASC
         """
-        if customer_limit:
+
+        customer_limit = int(limit or 0)
+        if customer_limit > 0:
             query += " LIMIT %(limit)s OFFSET %(start)s"
             params["limit"] = customer_limit
             params["start"] = int(start or 0)
@@ -128,14 +106,7 @@ def get_customers(search_term="", pos_profile=None, start=0, limit=20):
 
 
 @frappe.whitelist()
-def create_customer(
-    customer_name,
-    mobile_no=None,
-    email_id=None,
-    customer_group="Individual",
-    territory="All Territories",
-    pos_profile=None,
-):
+def create_customer(customer_name, mobile_no=None, email_id=None, customer_group="Individual", territory="All Territories"):
     """
     Create a new customer from POS.
 
@@ -145,7 +116,6 @@ def create_customer(
         email_id (str): Email address (optional)
         customer_group (str): Customer group (default: Individual)
         territory (str): Territory (default: All Territories)
-        pos_profile (str): POS Profile used to tag the customer company
 
     Returns:
         dict: Created customer document
@@ -157,22 +127,17 @@ def create_customer(
     if not customer_name:
         frappe.throw(_("Customer name is required"))
 
-    customer_data = {
-        "doctype": "Customer",
-        "customer_name": customer_name,
-        "customer_type": "Individual",
-        "customer_group": customer_group or "Individual",
-        "territory": territory or "All Territories",
-        "mobile_no": mobile_no or "",
-        "email_id": email_id or "",
-    }
-
-    profile_doc = _get_pos_profile_doc(pos_profile)
-    company, _default_customer = _get_pos_customer_scope(profile_doc)
-    if company and _customer_has_company_field():
-        customer_data[CUSTOMER_COMPANY_FIELD] = company
-
-    customer = frappe.get_doc(customer_data)
+    customer = frappe.get_doc(
+        {
+            "doctype": "Customer",
+            "customer_name": customer_name,
+            "customer_type": "Individual",
+            "customer_group": customer_group or "Individual",
+            "territory": territory or "All Territories",
+            "mobile_no": mobile_no or "",
+            "email_id": email_id or "",
+        }
+    )
 
     customer.insert()
 

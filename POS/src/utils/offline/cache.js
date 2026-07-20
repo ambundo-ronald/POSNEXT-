@@ -207,12 +207,7 @@ export const cacheCustomersFromServer = async (posProfile) => {
 			const customers = response.message
 
 			console.log(`Fetched ${customers.length} customers from server`)
-			return {
-				customers: customers.map((customer) => ({
-					...customer,
-					pos_profile: posProfile,
-				})),
-			}
+			return { customers }
 		}
 
 		return { customers: [] }
