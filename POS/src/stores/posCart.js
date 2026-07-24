@@ -56,6 +56,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	const selectionMode = ref("uom") // 'uom' or 'variant'
 	const suppressOfferReapply = ref(false)
 	const currentDraftId = ref(null)
+	const salesPersonCommissionMode = ref("single")
 
 	// Toast composable
 	const { showSuccess, showError, showWarning } = useToast()
@@ -64,6 +65,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	const itemCount = computed(() => invoiceItems.value.length)
 	const isEmpty = computed(() => invoiceItems.value.length === 0)
 	const hasCustomer = computed(() => !!customer.value)
+	const isSingleSalesPersonCommissionMode = computed(() => salesPersonCommissionMode.value === "single")
+	const isItemizedSalesPersonCommissionMode = computed(() => salesPersonCommissionMode.value === "itemized")
 
 	// Actions
 	function addItem(item, qty = 1, autoAdd = false, currentProfile = null) {
@@ -115,6 +118,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		appliedOffers.value = []
 		appliedCoupon.value = null
 		currentDraftId.value = null
+		salesPersonCommissionMode.value = "single"
 	}
 
 	function setCustomer(selectedCustomer) {
@@ -772,8 +776,12 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	}
 
 
+	function setSalesPersonCommissionMode(mode) {
+		salesPersonCommissionMode.value = mode === "itemized" ? "itemized" : "single"
+	}
+
 	function getItemsMissingSalesPerson() {
-		if (!settingsStore.enableItemSalesPersonCommission || !settingsStore.isMultipleSalesPersons) {
+		if (!settingsStore.enableItemSalesPersonCommission || !isItemizedSalesPersonCommissionMode.value) {
 			return []
 		}
 
@@ -936,10 +944,13 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		selectionMode,
 		suppressOfferReapply,
 		currentDraftId,
+		salesPersonCommissionMode,
 		// Computed
 		itemCount,
 		isEmpty,
 		hasCustomer,
+		isSingleSalesPersonCommissionMode,
+		isItemizedSalesPersonCommissionMode,
 
 		// Actions
 		addItem,
@@ -968,6 +979,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		rebuildIncrementalCache,
 		applyOffersResource,
 		buildInvoiceDataForOffers,
+		setSalesPersonCommissionMode,
 		getItemsMissingSalesPerson,
 		applySalesPersonToAllItems,
 		buildItemSalesTeam,

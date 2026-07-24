@@ -226,6 +226,36 @@
                                 </button>
                         </div>
 
+						<div
+							v-if="settingsStore.enableItemSalesPersonCommission && settingsStore.enableSalesPersons"
+							class="mb-2 flex rounded-lg border border-indigo-100 bg-indigo-50 p-0.5"
+						>
+							<button
+								type="button"
+								@click="setSalesPersonMode('single')"
+								:class="[
+									'flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold transition-colors',
+									cartStore.isSingleSalesPersonCommissionMode
+										? 'bg-white text-indigo-700 shadow-sm'
+										: 'text-indigo-600 hover:bg-white/60'
+								]"
+							>
+								{{ __('Single') }}
+							</button>
+							<button
+								type="button"
+								@click="setSalesPersonMode('itemized')"
+								:class="[
+									'flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold transition-colors',
+									cartStore.isItemizedSalesPersonCommissionMode
+										? 'bg-white text-indigo-700 shadow-sm'
+										: 'text-indigo-600 hover:bg-white/60'
+								]"
+							>
+								{{ __('Itemized') }}
+							</button>
+						</div>
+
                         <!-- Offers & Coupon Buttons -->
                         <div class="flex gap-2">
                                 <!-- View All Offers Button -->
@@ -463,7 +493,7 @@
 								</button>
 							</div>
 							<div
-								v-if="settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons"
+								v-if="settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode"
 								:class="[
 									'mb-1 inline-flex w-fit items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold',
 									item.posa_sales_person
@@ -1392,6 +1422,10 @@ function selectUom(item, uom) {
  *
  * @param {Object} item - Cart item to edit
  */
+function setSalesPersonMode(mode) {
+	cartStore.setSalesPersonCommissionMode(mode)
+}
+
 function openEditDialog(item) {
 	selectedItem.value = { ...item }
 	showEditDialog.value = true

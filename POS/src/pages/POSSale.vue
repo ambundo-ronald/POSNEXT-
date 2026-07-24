@@ -1657,7 +1657,7 @@ function handleProceedToPayment() {
 		return
 	}
 
-	if (settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons && showItemSalesPersonWarning()) {
+	if (settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode && showItemSalesPersonWarning()) {
 		return
 	}
 
@@ -1772,7 +1772,7 @@ async function handlePaymentCompleted(paymentData) {
 			return
 		}
 
-		if (settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons && showItemSalesPersonWarning()) {
+		if (settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode && showItemSalesPersonWarning()) {
 			uiStore.showPaymentDialog = false
 			return
 		}
@@ -1823,11 +1823,11 @@ async function handlePaymentCompleted(paymentData) {
 		cartStore.rebuildIncrementalCache()
 
 		// Store sales team data. Single applies to every item; Multiple uses itemized assignment.
-		if (settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons) {
+		if (settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode) {
 			cartStore.salesTeam = cartStore.buildItemSalesTeam()
 		} else if (paymentData.sales_team && Array.isArray(paymentData.sales_team)) {
 			cartStore.salesTeam = paymentData.sales_team
-			if (settingsStore.enableItemSalesPersonCommission && settingsStore.isSingleSalesPerson) {
+			if (settingsStore.enableItemSalesPersonCommission && cartStore.isSingleSalesPersonCommissionMode) {
 				const applied = cartStore.applySalesPersonToAllItems(cartStore.salesTeam[0])
 				if (!applied) {
 					showWarning(__("Select a sales person before completing payment"))

@@ -148,7 +148,7 @@
 				</div>
 
 				<!-- Sales Persons Selection -->
-				<div v-if="settingsStore.enableSalesPersons && !(settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons)" class="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-3">
+				<div v-if="settingsStore.enableSalesPersons && !(settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode)" class="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-3">
 					<div class="flex items-center justify-between mb-2">
 						<div class="flex items-center gap-2">
 							<div class="w-6 h-6 rounded-full bg-purple-200 flex items-center justify-center">
@@ -157,13 +157,13 @@
 								</svg>
 							</div>
 							<span class="text-xs font-bold text-purple-900">
-								{{ settingsStore.isMultipleSalesPersons
+								{{ effectiveIsMultipleSalesPersons
 									? __('Sales Persons')
 									: __('Sales Person')
 								}}
 							</span>
 							<span v-if="selectedSalesPersons.length > 0" class="text-xs font-bold text-purple-600 bg-purple-100 px-2 py-0.5 rounded">
-								{{ settingsStore.isSingleSalesPerson
+								{{ effectiveIsSingleSalesPerson
 									? __('1 selected')
 									: __('{0} selected', [selectedSalesPersons.length]) }}
 							</span>
@@ -173,7 +173,7 @@
 							@click="clearSalesPersons"
 							class="text-xs text-purple-700 hover:text-purple-900 font-semibold px-2 py-1 bg-purple-100 hover:bg-purple-200 rounded transition-colors"
 						>
-							{{ settingsStore.isSingleSalesPerson ? __('Clear') : __('Clear All') }}
+							{{ effectiveIsSingleSalesPerson ? __('Clear') : __('Clear All') }}
 						</button>
 					</div>
 
@@ -194,7 +194,7 @@
 					<div v-if="selectedSalesPersons.length > 0" class="mb-2 flex flex-col gap-1.5">
 						<div class="flex items-center justify-between gap-2 mb-1">
 							<div class="text-[10px] font-semibold text-purple-700 uppercase tracking-wide">{{ __('Selected:') }}</div>
-							<div v-if="settingsStore.isMultipleSalesPersons" class="inline-flex rounded-lg border border-purple-300 bg-white p-0.5">
+							<div v-if="effectiveIsMultipleSalesPersons" class="inline-flex rounded-lg border border-purple-300 bg-white p-0.5">
 								<button
 									@click="setSalesPersonAllocationMode('percentage')"
 									:class="[
@@ -237,7 +237,7 @@
 									{{ person.sales_person_name || person.sales_person }}
 								</span>
 							</div>
-							<div v-if="settingsStore.isMultipleSalesPersons" class="flex items-center gap-1">
+							<div v-if="effectiveIsMultipleSalesPersons" class="flex items-center gap-1">
 								<span v-if="salesPersonAllocationMode === 'amount'" class="text-[10px] text-gray-600 font-medium">{{ currencySymbol }}</span>
 								<input
 									type="number"
@@ -256,7 +256,7 @@
 							</div>
 						</div>
 
-						<div v-if="settingsStore.isMultipleSalesPersons && !isSalesPersonAllocationValid" class="flex items-center gap-2 p-2 bg-yellow-50 border border-yellow-300 rounded mt-2">
+						<div v-if="effectiveIsMultipleSalesPersons && !isSalesPersonAllocationValid" class="flex items-center gap-2 p-2 bg-yellow-50 border border-yellow-300 rounded mt-2">
 							<svg class="w-4 h-4 text-yellow-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
 								<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
 							</svg>
@@ -987,6 +987,7 @@
 
 <script setup>
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSCartStore } from "@/stores/posCart"
 import { formatCurrency as formatCurrencyUtil, getCurrencySymbol } from "@/utils/currency"
 import { call } from "@/utils/apiWrapper"
 import { getPaymentIcon } from "@/utils/payment"
@@ -996,6 +997,7 @@ import { computed, onUnmounted, ref, watch } from "vue"
 import { useToast } from "@/composables/useToast"
 
 const settingsStore = usePOSSettingsStore()
+const cartStore = usePOSCartStore()
 const { showSuccess, showWarning, showError } = useToast()
 
 const props = defineProps({
@@ -1192,6 +1194,20 @@ const salesPersonsResource = createResource({
 })
 
 // Computed: Filter sales persons based on search and exclude already selected
+const effectiveIsItemizedSalesPersonCommission = computed(() =>
+	settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode,
+)
+const effectiveIsSingleSalesPerson = computed(() =>
+	settingsStore.enableItemSalesPersonCommission
+		? cartStore.isSingleSalesPersonCommissionMode
+		: settingsStore.isSingleSalesPerson,
+)
+const effectiveIsMultipleSalesPersons = computed(() =>
+	settingsStore.enableItemSalesPersonCommission
+		? false
+		: settingsStore.isMultipleSalesPersons,
+)
+
 const filteredSalesPersons = computed(() => {
 	if (!salesPersonSearch.value) {
 		return []
@@ -1241,7 +1257,7 @@ const normalizedSalesTeam = computed(() => {
 		let allocatedPercentage = toPositiveNumber(person.allocated_percentage)
 		let allocatedAmount = toPositiveNumber(person.allocated_amount)
 
-		if (settingsStore.isSingleSalesPerson) {
+		if (effectiveIsSingleSalesPerson.value) {
 			allocatedPercentage = 100
 			allocatedAmount = invoiceSalesTeamTotal.value
 		} else if (salesPersonAllocationMode.value === 'amount') {
@@ -1263,13 +1279,13 @@ const normalizedSalesTeam = computed(() => {
 })
 
 const isSalesPersonAllocationValid = computed(() => {
-	if ((settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons) || !settingsStore.enableSalesPersons) {
+	if (effectiveIsItemizedSalesPersonCommission.value || !settingsStore.enableSalesPersons) {
 		return true
 	}
 	if (selectedSalesPersons.value.length === 0) {
 		return false
 	}
-	if (!settingsStore.isMultipleSalesPersons) {
+	if (!effectiveIsMultipleSalesPersons.value) {
 		return selectedSalesPersons.value.length === 1
 	}
 	if (salesPersonAllocationMode.value === 'amount') {
@@ -1312,12 +1328,12 @@ function addSalesPerson(person) {
 	const row = {
 		sales_person: person.name,
 		sales_person_name: person.sales_person_name || person.name,
-		allocated_percentage: settingsStore.isSingleSalesPerson ? 100 : defaultPercentage,
-		allocated_amount: settingsStore.isSingleSalesPerson ? invoiceSalesTeamTotal.value : defaultAmount,
+		allocated_percentage: effectiveIsSingleSalesPerson.value ? 100 : defaultPercentage,
+		allocated_amount: effectiveIsSingleSalesPerson.value ? invoiceSalesTeamTotal.value : defaultAmount,
 		commission_rate: person.commission_rate,
 	}
 
-	if (settingsStore.isSingleSalesPerson) {
+	if (effectiveIsSingleSalesPerson.value) {
 		selectedSalesPersons.value = [row]
 	} else {
 		selectedSalesPersons.value.push(row)
@@ -1358,7 +1374,7 @@ function clearSalesPersons() {
 
 watch(invoiceSalesTeamTotal, () => {
 	selectedSalesPersons.value.forEach((person) => {
-		if (settingsStore.isSingleSalesPerson) {
+		if (effectiveIsSingleSalesPerson.value) {
 			person.allocated_percentage = 100
 			person.allocated_amount = invoiceSalesTeamTotal.value
 		} else if (salesPersonAllocationMode.value === 'percentage') {
@@ -2024,7 +2040,7 @@ watch(
 			console.log('[PaymentDialog] Preloading payment methods for profile:', newProfile)
 			loadPaymentMethods()
 			// Also preload sales persons if enabled
-			if (settingsStore.enableSalesPersons && !(settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons) && salesPersons.value.length === 0) {
+			if (settingsStore.enableSalesPersons && !(settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode) && salesPersons.value.length === 0) {
 				loadingSalesPersons.value = true
 				salesPersonsResource.fetch()
 			}

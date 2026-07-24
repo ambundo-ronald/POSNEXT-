@@ -311,6 +311,7 @@
 <script setup>
 import { useToast } from "@/composables/useToast"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSCartStore } from "@/stores/posCart"
 import { useSerialNumberStore } from "@/stores/serialNumber"
 import { getItemStock } from "@/utils/stockValidator"
 import { formatCurrency as formatCurrencyUtil, getCurrencySymbol } from "@/utils/currency"
@@ -319,6 +320,7 @@ import { computed, ref, watch } from "vue"
 
 const { showSuccess, showError, showWarning } = useToast()
 const settingsStore = usePOSSettingsStore()
+const cartStore = usePOSCartStore()
 const serialStore = useSerialNumberStore()
 
 const props = defineProps({
@@ -383,7 +385,7 @@ const canEditRate = computed(() =>
 	),
 )
 const showItemSalesPersonCommission = computed(() =>
-	settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons,
+	settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode,
 )
 const missingItemSalesPerson = computed(() =>
 	showItemSalesPersonCommission.value && !localSalesPerson.value,
