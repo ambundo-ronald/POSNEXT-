@@ -476,6 +476,12 @@
 												:description="__('Enable partial payment for invoices')"
 											/>
 											<SelectField
+												v-model="settings.enable_sales_persons"
+												:label="__('Sales Persons Selection')"
+												:description="__('Disabled hides sales person selection. Single requires one sales person. Multiple allows splitting the invoice by percentage or amount.')"
+												:options="salesPersonSelectionOptions"
+											/>
+											<SelectField
 												v-model="settings.sms_payment_reconciliation_mode"
 												:label="__('SMS Payment Reconciliation')"
 												:description="__('Per POS Profile: Manual requires cashier selection. Suggested shows likely matches. Auto applies one high-confidence exact match only.')"
@@ -814,6 +820,7 @@ const settings = ref({
 	allow_return: 0,
 	allow_write_off_change: 0,
 	allow_partial_payment: 0,
+	enable_sales_persons: "Disabled",
 	sms_payment_reconciliation_mode: "Manual",
 	sms_enabler_enabled: 0,
 	sms_enabler_source: "SMS Enabler",
@@ -892,6 +899,11 @@ const smsReconciliationModeOptions = computed(() => [
 	{ label: __("Manual"), value: "Manual" },
 	{ label: __("Suggested"), value: "Suggested" },
 	{ label: __("Auto"), value: "Auto" },
+])
+const salesPersonSelectionOptions = computed(() => [
+	{ label: __("Disabled"), value: "Disabled" },
+	{ label: __("Single"), value: "Single" },
+	{ label: __("Multiple"), value: "Multiple" },
 ])
 const smsEnablerWebhookUrl = computed(() => {
 	if (settings.value.sms_enabler_webhook_url) {
