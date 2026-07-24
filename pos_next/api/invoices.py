@@ -105,6 +105,107 @@ def normalize_sales_team_allocations(sales_team_data, invoice_total=0):
     return normalized
 
 
+def _is_item_sales_person_commission_enabled(pos_profile):
+    if not pos_profile:
+        return False
+
+    try:
+        if not frappe.get_meta("POS Settings").has_field("enable_item_sales_person_commission"):
+            return False
+        settings = frappe.db.get_value(
+            "POS Settings",
+            {"pos_profile": pos_profile, "enabled": 1},
+            ["enable_item_sales_person_commission", "enable_sales_persons"],
+            as_dict=True,
+        )
+        return bool(
+            settings
+            and cint(settings.get("enable_item_sales_person_commission"))
+            and settings.get("enable_sales_persons") in ("Single", "Multiple")
+        )
+    except Exception:
+        return False
+
+
+def _get_invoice_item_commission_meta():
+    meta = frappe.get_meta("Sales Invoice Item")
+    return {
+        "sales_person": meta.has_field("posa_sales_person"),
+        "commission_rate": meta.has_field("posa_commission_rate"),
+        "commission_amount": meta.has_field("posa_commission_amount"),
+    }
+
+
+def apply_item_sales_person_commissions(invoice_doc, require_sales_person=False):
+    """Validate and calculate item-level sales person commission fields."""
+    fields = _get_invoice_item_commission_meta()
+    if require_sales_person and not all(fields.values()):
+        frappe.throw(
+            _("Item-level sales person commission fields are missing. Please run migrate for POS Next."),
+            title=_("Missing Custom Fields"),
+        )
+
+    missing_items = []
+    for item in invoice_doc.get("items", []):
+        sales_person = cstr(item.get("posa_sales_person")).strip()
+        if require_sales_person and not sales_person:
+            missing_items.append(item.get("item_name") or item.get("item_code"))
+            continue
+
+        if sales_person and not frappe.db.exists("Sales Person", sales_person):
+            frappe.throw(_("Sales Person {0} does not exist.").format(sales_person))
+
+        commission_rate = flt(item.get("posa_commission_rate"), 4)
+        if commission_rate < 0 or commission_rate > 100:
+            frappe.throw(
+                _("Commission rate for {0} must be between 0 and 100.").format(
+                    item.get("item_name") or item.get("item_code")
+                )
+            )
+
+        if fields["commission_amount"]:
+            item.posa_commission_amount = flt(flt(item.get("amount")) * commission_rate / 100, 2)
+
+    if missing_items:
+        frappe.throw(
+            _("Select a sales person for: {0}").format(", ".join(missing_items)),
+            title=_("Sales Person Required"),
+        )
+
+
+def build_sales_team_from_item_commissions(invoice_doc):
+    """Build standard ERPNext Sales Team rows from item-level assignments."""
+    totals = {}
+    for item in invoice_doc.get("items", []):
+        sales_person = cstr(item.get("posa_sales_person")).strip()
+        if not sales_person:
+            continue
+        totals[sales_person] = flt(totals.get(sales_person)) + flt(item.get("amount"))
+
+    total_amount = flt(sum(totals.values()))
+    if not totals or total_amount <= 0:
+        return []
+
+    rows = []
+    allocated = 0
+    people = list(totals.items())
+    for index, (sales_person, amount) in enumerate(people):
+        if index == len(people) - 1:
+            percentage = flt(100 - allocated, 4)
+        else:
+            percentage = flt((amount / total_amount) * 100, 4)
+            allocated = flt(allocated + percentage, 4)
+        rows.append(
+            {
+                "sales_person": sales_person,
+                "allocated_percentage": percentage,
+                "allocated_amount": amount,
+            }
+        )
+
+    return rows
+
+
 # ==========================================
 
 CLIENT_TRANSACTION_FIELD = "posa_client_transaction_id"
@@ -784,6 +885,7 @@ def update_invoice(data):
                 invoice_doc.append("payments", payment)
 
         normalize_pos_invoice_payments(invoice_doc, invoice_doc.company)
+        apply_item_sales_person_commissions(invoice_doc)
 
         # For return invoices, ensure payments are negative
         if invoice_doc.is_return:
@@ -929,8 +1031,18 @@ def submit_invoice(invoice=None, data=None):
 
         normalize_pos_invoice_payments(invoice_doc, invoice_doc.company)
 
+        item_sales_person_commission_enabled = _is_item_sales_person_commission_enabled(pos_profile)
+        apply_item_sales_person_commissions(
+            invoice_doc,
+            require_sales_person=item_sales_person_commission_enabled,
+        )
+
         # Handle sales team (single or multiple sales persons)
-        sales_team_data = invoice.get("sales_team") or data.get("sales_team")
+        sales_team_data = (
+            build_sales_team_from_item_commissions(invoice_doc)
+            if item_sales_person_commission_enabled
+            else invoice.get("sales_team") or data.get("sales_team")
+        )
         normalized_sales_team = normalize_sales_team_allocations(
             sales_team_data,
             invoice_doc.get("rounded_total") or invoice_doc.get("grand_total") or 0,

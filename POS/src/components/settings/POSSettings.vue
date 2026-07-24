@@ -481,6 +481,11 @@
 												:description="__('Disabled hides sales person selection. Single requires one sales person. Multiple allows splitting the invoice by percentage or amount.')"
 												:options="salesPersonSelectionOptions"
 											/>
+											<CheckboxField
+												v-model="settings.enable_item_sales_person_commission"
+												:label="__('Item-Level Sales Person Commission')"
+												:description="__('Single selects one sales person at checkout and applies them to all items. Multiple requires item-by-item assignment for commission tracking.')"
+											/>
 											<SelectField
 												v-model="settings.sms_payment_reconciliation_mode"
 												:label="__('SMS Payment Reconciliation')"
@@ -821,6 +826,7 @@ const settings = ref({
 	allow_write_off_change: 0,
 	allow_partial_payment: 0,
 	enable_sales_persons: "Disabled",
+	enable_item_sales_person_commission: 0,
 	sms_payment_reconciliation_mode: "Manual",
 	sms_enabler_enabled: 0,
 	sms_enabler_source: "SMS Enabler",

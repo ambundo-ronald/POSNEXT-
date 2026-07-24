@@ -216,6 +216,10 @@ export function useInvoice() {
 				// Add item_group and brand for offer eligibility checking
 				item_group: item.item_group,
 				brand: item.brand,
+				posa_sales_person: item.posa_sales_person || "",
+				posa_sales_person_name: item.posa_sales_person_name || "",
+				posa_commission_rate: Number.parseFloat(item.posa_commission_rate || 0) || 0,
+				posa_commission_amount: 0,
 			}
 			invoiceItems.value.push(newItem)
 			// Recalculate the newly added item to apply taxes
@@ -583,6 +587,11 @@ export function useInvoice() {
 		item.tax_amount = taxAmount
 		item.rate = priceListRate  // Preserve original price for display
 		item.amount = netAmount    // Net amount for backend calculations
+
+		const commissionRate = Number.parseFloat(item.posa_commission_rate || 0) || 0
+		item.posa_commission_amount = commissionRate > 0
+			? Number(((netAmount || 0) * commissionRate / 100).toFixed(2))
+			: 0
 	}
 
 	function addPayment(payment) {
@@ -684,6 +693,9 @@ export function useInvoice() {
 				conversion_factor: item.conversion_factor || 1,
 				discount_percentage: item.discount_percentage || 0,
 				discount_amount: item.discount_amount || 0,
+				posa_sales_person: item.posa_sales_person || "",
+				posa_commission_rate: item.posa_commission_rate || 0,
+				posa_commission_amount: item.posa_commission_amount || 0,
 			})),
 			payments: rawPayments.map((p) => ({
 				mode_of_payment: p.mode_of_payment,

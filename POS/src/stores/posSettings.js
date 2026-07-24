@@ -69,6 +69,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allow_negative_stock: 0,
 		// Sales Persons
 		enable_sales_persons: "Disabled",
+		enable_item_sales_person_commission: 0,
 	})
 
 	const isLoading = ref(false)
@@ -237,6 +238,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	const isMultipleSalesPersons = computed(() =>
 		settings.value.enable_sales_persons === "Multiple"
 	)
+	const enableItemSalesPersonCommission = computed(() =>
+		Boolean(settings.value.enable_item_sales_person_commission),
+	)
 
 	// Resource
 	const settingsResource = createResource({
@@ -350,6 +354,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			input_qty: 0,
 			allow_negative_stock: 0,
 			enable_sales_persons: "Disabled",
+				enable_item_sales_person_commission: 0,
 		}
 		isLoaded.value = false
 	}
@@ -479,6 +484,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		salesPersonsMode,
 		isSingleSalesPerson,
 		isMultipleSalesPersons,
+		enableItemSalesPersonCommission,
 
 		// Actions
 		loadSettings,

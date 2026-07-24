@@ -99,7 +99,8 @@ def get_pos_settings(pos_profile):
 				"retail_price_list",
 				"wholesale_price_list",
 				"allow_negative_stock",
-				"enable_sales_persons"
+				"enable_sales_persons",
+				"enable_item_sales_person_commission"
 			],
 			as_dict=True
 		)
@@ -128,7 +129,8 @@ def get_pos_settings(pos_profile):
 				"retail_price_list": "",
 				"wholesale_price_list": "",
 				"allow_negative_stock": 0,
-				"enable_sales_persons": "Disabled"
+				"enable_sales_persons": "Disabled",
+				"enable_item_sales_person_commission": 0
 			}
 			settings.update(get_global_sms_enabler_settings())
 			settings["pos_profile"] = pos_profile

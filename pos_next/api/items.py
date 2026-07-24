@@ -26,6 +26,7 @@ ITEM_RESULT_FIELDS = [
 	"brand",
 	"has_variants",
 	"custom_company",
+	"posa_commission_rate",
 	"disabled",
 ]
 
@@ -1316,6 +1317,7 @@ def get_item_details(item_code, pos_profile, customer=None, customer_group=None,
 		# Prepare item dict
 		item = {
 			"item_code": item_code,
+			"posa_commission_rate": flt(item_doc.get("posa_commission_rate") or 0),
 			"has_batch_no": item_doc.has_batch_no,
 			"has_serial_no": item_doc.has_serial_no,
 			"is_stock_item": item_doc.is_stock_item,
@@ -1327,12 +1329,14 @@ def get_item_details(item_code, pos_profile, customer=None, customer_group=None,
 		if uom:
 			item["uom"] = uom
 
-		return get_item_detail(
+		details = get_item_detail(
 			item=json.dumps(item),
 			warehouse=pos_profile_doc.warehouse,
 			price_list=effective_price_list,
 			company=pos_profile_doc.company,
 		)
+		details["posa_commission_rate"] = flt(item_doc.get("posa_commission_rate") or 0)
+		return details
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "Get Item Details Error")
 		frappe.throw(_("Error fetching item details: {0}").format(str(e)))

@@ -195,6 +195,47 @@
 					</div>
 				</div>
 
+				<!-- Item Sales Person Commission -->
+				<div v-if="showItemSalesPersonCommission" class="border-t border-gray-200 pt-4">
+					<label class="block text-sm font-medium text-gray-700 mb-3 text-start">{{ __('Sales Person Commission') }}</label>
+					<div class="grid grid-cols-2 gap-3">
+						<div>
+							<label class="block text-xs text-gray-600 mb-1 text-start">{{ __('Sales Person') }}</label>
+							<select
+								v-model="localSalesPerson"
+								@change="handleSalesPersonChange"
+								class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+							>
+								<option value="">{{ loadingSalesPersons ? __('Loading...') : __('Select sales person') }}</option>
+								<option
+									v-for="person in salesPersons"
+									:key="person.name"
+									:value="person.name"
+								>
+									{{ person.sales_person_name || person.name }}
+								</option>
+							</select>
+						</div>
+						<div>
+							<label class="block text-xs text-gray-600 mb-1 text-start">{{ __('Commission %') }}</label>
+							<div class="relative">
+								<input
+									v-model.number="localCommissionRate"
+									type="number"
+									min="0"
+									max="100"
+									step="0.01"
+									class="w-full border border-gray-300 rounded-lg px-3 py-2 pe-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+								/>
+								<span class="absolute inset-y-0 end-0 pe-3 flex items-center text-gray-500 text-sm">%</span>
+							</div>
+						</div>
+					</div>
+					<div class="mt-2 text-xs text-gray-600 text-start">
+						{{ __('Estimated commission: {0}', [formatCurrency(commissionAmount)]) }}
+					</div>
+				</div>
+
 				<!-- Item Discount Section (only if allowed by POS Profile) -->
 				<div v-if="settingsStore.allowItemDiscount" class="border-t border-gray-200 pt-4">
 					<label class="block text-sm font-medium text-gray-700 mb-3 text-start">{{ __('Item Discount') }}</label>
@@ -256,7 +297,7 @@
 				<Button
 					variant="solid"
 					@click="updateItem"
-					:disabled="!hasStock || isCheckingStock"
+					:disabled="!hasStock || isCheckingStock || missingItemSalesPerson"
 				>
 					<span v-if="isCheckingStock">{{ __('Checking Stock...') }}</span>
 					<span v-else-if="!hasStock">{{ __('No Stock Available') }}</span>
@@ -273,7 +314,7 @@ import { usePOSSettingsStore } from "@/stores/posSettings"
 import { useSerialNumberStore } from "@/stores/serialNumber"
 import { getItemStock } from "@/utils/stockValidator"
 import { formatCurrency as formatCurrencyUtil, getCurrencySymbol } from "@/utils/currency"
-import { Button, Dialog } from "frappe-ui"
+import { Button, Dialog, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 
 const { showSuccess, showError, showWarning } = useToast()
@@ -290,6 +331,10 @@ const props = defineProps({
 	currency: {
 		type: String,
 		default: "EGP",
+	},
+	posProfile: {
+		type: String,
+		default: "",
 	},
 })
 
@@ -311,6 +356,11 @@ const isCheckingStock = ref(false)
 const localSerials = ref([]) // List of serial numbers for this item
 const removedSerials = ref([]) // Track serials removed during this edit session
 const originalSerials = ref([]) // Original serials when dialog opened
+const salesPersons = ref([])
+const loadingSalesPersons = ref(false)
+const localSalesPerson = ref("")
+const localSalesPersonName = ref("")
+const localCommissionRate = ref(0)
 
 const show = computed({
 	get: () => props.modelValue,
@@ -332,6 +382,44 @@ const canEditRate = computed(() =>
 			localItem.value?.allow_user_to_edit_rate,
 	),
 )
+const showItemSalesPersonCommission = computed(() =>
+	settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons,
+)
+const missingItemSalesPerson = computed(() =>
+	showItemSalesPersonCommission.value && !localSalesPerson.value,
+)
+const commissionAmount = computed(() => {
+	const rate = Number.parseFloat(localCommissionRate.value || 0) || 0
+	return Number(((calculatedTotal.value || 0) * rate / 100).toFixed(2))
+})
+
+const salesPersonsResource = createResource({
+	url: "pos_next.api.pos_profile.get_sales_persons",
+	makeParams() {
+		return {
+			pos_profile: props.posProfile,
+		}
+	},
+	auto: false,
+	onSuccess(data) {
+		salesPersons.value = data?.message || data || []
+		loadingSalesPersons.value = false
+	},
+	onError(error) {
+		console.error("Error loading sales persons:", error)
+		salesPersons.value = []
+		loadingSalesPersons.value = false
+	},
+})
+
+function loadSalesPersons() {
+	if (!props.posProfile || loadingSalesPersons.value || salesPersons.value.length) {
+		return
+	}
+
+	loadingSalesPersons.value = true
+	salesPersonsResource.fetch()
+}
 
 // Initialize local state when item changes
 watch(
@@ -344,6 +432,13 @@ watch(
 			localRate.value = Number.parseFloat(newItem.price_list_rate ?? newItem.rate ?? 0) || 0
 			localWarehouse.value =
 				newItem.warehouse || props.warehouses[0]?.name || ""
+			localSalesPerson.value = newItem.posa_sales_person || ""
+			localSalesPersonName.value = newItem.posa_sales_person_name || ""
+			localCommissionRate.value = Number.parseFloat(newItem.posa_commission_rate || 0) || 0
+
+			if (showItemSalesPersonCommission.value) {
+				loadSalesPersons()
+			}
 
 			// Initialize serial numbers
 			if (newItem.has_serial_no && newItem.serial_no) {
@@ -476,6 +571,11 @@ function handleUomChange() {
 	calculateTotals()
 }
 
+async function handleSalesPersonChange() {
+	const person = salesPersons.value.find((row) => row.name === localSalesPerson.value)
+	localSalesPersonName.value = person?.sales_person_name || person?.name || localSalesPerson.value || ""
+}
+
 async function handleWarehouseChange() {
 	if (!localItem.value || !localWarehouse.value) return
 
@@ -564,6 +664,11 @@ function formatCurrency(amount) {
 }
 
 function updateItem() {
+	if (missingItemSalesPerson.value) {
+		showWarning(__("Select a sales person for this item before updating."))
+		return
+	}
+
 	const editedRate = Number.parseFloat(localRate.value) || 0
 	const updatedItem = {
 		...localItem.value,
@@ -574,6 +679,10 @@ function updateItem() {
 			? editedRate
 			: localItem.value.price_list_rate,
 		warehouse: localWarehouse.value,
+		posa_sales_person: localSalesPerson.value || "",
+		posa_sales_person_name: localSalesPersonName.value || "",
+		posa_commission_rate: Number.parseFloat(localCommissionRate.value || 0) || 0,
+		posa_commission_amount: commissionAmount.value,
 		discount_percentage:
 			discountType.value === "percentage" ? discountValue.value : 0,
 		discount_amount:

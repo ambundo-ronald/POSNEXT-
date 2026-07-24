@@ -167,6 +167,7 @@ def get_pos_settings(pos_profile):
 				"wholesale_price_list",
 				"allow_negative_stock",
 				"enable_sales_persons",
+				"enable_item_sales_person_commission",
 				"silent_print"
 			],
 			as_dict=True
@@ -227,6 +228,7 @@ def get_default_pos_settings():
 		"wholesale_price_list": "",
 		"allow_negative_stock": 0,
 		"enable_sales_persons": "Disabled",
+		"enable_item_sales_person_commission": 0,
 		"silent_print": 0
 	}
 

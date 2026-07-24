@@ -462,6 +462,18 @@
 									</svg>
 								</button>
 							</div>
+							<div
+								v-if="settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons"
+								:class="[
+									'mb-1 inline-flex w-fit items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold',
+									item.posa_sales_person
+										? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+										: 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+								]"
+							>
+								{{ item.posa_sales_person ? (item.posa_sales_person_name || item.posa_sales_person) : __('Assign sales person') }}
+								<span v-if="item.posa_commission_rate" class="ms-1">{{ Number(item.posa_commission_rate).toFixed(2) }}%</span>
+							</div>
 
 							<!-- Single Row: Quantity Counter, UOM, Price & Total -->
 							<div class="flex items-center justify-between gap-1.5">
@@ -689,6 +701,7 @@
 			:item="selectedItem"
 			:warehouses="warehouses"
 			:currency="currency"
+			:pos-profile="posProfile"
 			@update-item="handleUpdateItem"
 		/>
 	</div>
@@ -701,6 +714,7 @@
  * ============================================================================
  */
 import { usePOSCartStore } from "@/stores/posCart"
+import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSOffersStore } from "@/stores/posOffers"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { useFormatters } from "@/composables/useFormatters"
@@ -717,6 +731,7 @@ import EditItemDialog from "./EditItemDialog.vue"
  * ============================================================================
  */
 const cartStore = usePOSCartStore()      // Pinia store for cart state management
+const settingsStore = usePOSSettingsStore()
 const offersStore = usePOSOffersStore()  // Pinia store for offers/promotions
 const { formatQuantity } = useFormatters() // Quantity formatting utilities
 

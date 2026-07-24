@@ -733,6 +733,18 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			if (updatedDetails.discount_amount !== undefined) {
 				cartItem.discount_amount = updatedDetails.discount_amount
 			}
+			if (updatedDetails.posa_sales_person !== undefined) {
+				cartItem.posa_sales_person = updatedDetails.posa_sales_person || ""
+			}
+			if (updatedDetails.posa_sales_person_name !== undefined) {
+				cartItem.posa_sales_person_name = updatedDetails.posa_sales_person_name || ""
+			}
+			if (updatedDetails.posa_commission_rate !== undefined) {
+				cartItem.posa_commission_rate = Number.parseFloat(updatedDetails.posa_commission_rate || 0) || 0
+			}
+			if (updatedDetails.posa_commission_amount !== undefined) {
+				cartItem.posa_commission_amount = Number.parseFloat(updatedDetails.posa_commission_amount || 0) || 0
+			}
 			// Update price_list_rate if provided (for UOM changes). Manual rate
 			// edits set price_list_rate above so recalculateItem preserves them.
 			if (updatedDetails.price_list_rate !== undefined && !canEditRate) {
@@ -757,6 +769,72 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			showError(parseError(error) || __("Failed to update item. Please try again."))
 			return false
 		}
+	}
+
+
+	function getItemsMissingSalesPerson() {
+		if (!settingsStore.enableItemSalesPersonCommission || !settingsStore.isMultipleSalesPersons) {
+			return []
+		}
+
+		return invoiceItems.value.filter((item) => !item.posa_sales_person)
+	}
+
+	function applySalesPersonToAllItems(member) {
+		const salesPerson = member?.sales_person || ""
+		if (!salesPerson) {
+			return false
+		}
+
+		invoiceItems.value.forEach((item) => {
+			item.posa_sales_person = salesPerson
+			item.posa_sales_person_name = member.sales_person_name || salesPerson
+			recalculateItem(item)
+		})
+		rebuildIncrementalCache()
+		return true
+	}
+
+	function buildItemSalesTeam() {
+		if (!settingsStore.enableItemSalesPersonCommission) {
+			return []
+		}
+
+		const totalsByPerson = new Map()
+		for (const item of invoiceItems.value) {
+			if (!item.posa_sales_person) continue
+
+			const lineAmount = Number.parseFloat(
+				item.amount ?? ((item.price_list_rate || item.rate || 0) * (item.quantity || 0)),
+			) || 0
+			const current = totalsByPerson.get(item.posa_sales_person) || {
+				sales_person: item.posa_sales_person,
+				sales_person_name: item.posa_sales_person_name || item.posa_sales_person,
+				allocated_amount: 0,
+			}
+			current.allocated_amount += lineAmount
+			totalsByPerson.set(item.posa_sales_person, current)
+		}
+
+		const rows = Array.from(totalsByPerson.values())
+		const total = rows.reduce((sum, row) => sum + row.allocated_amount, 0)
+		if (!rows.length || total <= 0) {
+			return []
+		}
+
+		let allocated = 0
+		return rows.map((row, index) => {
+			const percentage = index === rows.length - 1
+				? Number((100 - allocated).toFixed(4))
+				: Number((row.allocated_amount / total * 100).toFixed(4))
+			allocated += percentage
+			return {
+				sales_person: row.sales_person,
+				sales_person_name: row.sales_person_name,
+				allocated_percentage: percentage,
+				allocated_amount: Number(row.allocated_amount.toFixed(2)),
+			}
+		})
 	}
 
 	// Performance: Cache previous item codes hash to avoid unnecessary recalculations
@@ -890,5 +968,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		rebuildIncrementalCache,
 		applyOffersResource,
 		buildInvoiceDataForOffers,
+		getItemsMissingSalesPerson,
+		applySalesPersonToAllItems,
+		buildItemSalesTeam,
 	}
 })

@@ -1617,6 +1617,21 @@ function getZeroPriceCartItems() {
 	})
 }
 
+function showItemSalesPersonWarning() {
+	const missingItems = cartStore.getItemsMissingSalesPerson()
+	if (!missingItems.length) return false
+
+	showWarning(
+		__("Select a sales person for: {0}", [
+			missingItems
+				.map((item) => item.item_name || item.item_code)
+				.filter(Boolean)
+				.join(", "),
+		]),
+	)
+	return true
+}
+
 function showZeroPriceBlockedWarning() {
 	const blockedItems = getZeroPriceCartItems()
 	if (!blockedItems.length) return false
@@ -1639,6 +1654,10 @@ function handleProceedToPayment() {
 	}
 
 	if (settingsStore.blockZeroPriceSales && showZeroPriceBlockedWarning()) {
+		return
+	}
+
+	if (settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons && showItemSalesPersonWarning()) {
 		return
 	}
 
@@ -1753,6 +1772,11 @@ async function handlePaymentCompleted(paymentData) {
 			return
 		}
 
+		if (settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons && showItemSalesPersonWarning()) {
+			uiStore.showPaymentDialog = false
+			return
+		}
+
 		checkoutFingerprint = createCheckoutFingerprint({
 			posProfile: cartStore.posProfile,
 			customer: customerValue || shiftStore.profileCustomer,
@@ -1798,9 +1822,19 @@ async function handlePaymentCompleted(paymentData) {
 		}
 		cartStore.rebuildIncrementalCache()
 
-		// Store sales team data if provided
-		if (paymentData.sales_team && Array.isArray(paymentData.sales_team)) {
+		// Store sales team data. Single applies to every item; Multiple uses itemized assignment.
+		if (settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons) {
+			cartStore.salesTeam = cartStore.buildItemSalesTeam()
+		} else if (paymentData.sales_team && Array.isArray(paymentData.sales_team)) {
 			cartStore.salesTeam = paymentData.sales_team
+			if (settingsStore.enableItemSalesPersonCommission && settingsStore.isSingleSalesPerson) {
+				const applied = cartStore.applySalesPersonToAllItems(cartStore.salesTeam[0])
+				if (!applied) {
+					showWarning(__("Select a sales person before completing payment"))
+					uiStore.showPaymentDialog = true
+					return
+				}
+			}
 		} else {
 			cartStore.salesTeam = []
 		}

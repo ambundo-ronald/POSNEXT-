@@ -29,6 +29,7 @@
   "section_break_sms_sender_mapping",
   "sms_enabler_sender_mappings",
   "enable_sales_persons",
+  "enable_item_sales_person_commission",
   "section_break_display",
   "default_card_view",
   "display_item_code",
@@ -250,6 +251,13 @@
    "label": "Sales Persons Selection",
    "options": "Disabled\nSingle\nMultiple",
    "description": "Disabled: No sales person selection. Single: Select one sales person (100%). Multiple: Select multiple and allocate by percentage or amount."
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_item_sales_person_commission",
+   "fieldtype": "Check",
+   "label": "Item-Level Sales Person Commission",
+   "description": "Assign sales persons and commission rates per invoice item from POS."
   },
   {
    "collapsible": 1,

@@ -148,7 +148,7 @@
 				</div>
 
 				<!-- Sales Persons Selection -->
-				<div v-if="settingsStore.enableSalesPersons" class="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-3">
+				<div v-if="settingsStore.enableSalesPersons && !(settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons)" class="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-3">
 					<div class="flex items-center justify-between mb-2">
 						<div class="flex items-center gap-2">
 							<div class="w-6 h-6 rounded-full bg-purple-200 flex items-center justify-center">
@@ -1263,7 +1263,7 @@ const normalizedSalesTeam = computed(() => {
 })
 
 const isSalesPersonAllocationValid = computed(() => {
-	if (!settingsStore.enableSalesPersons) {
+	if ((settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons) || !settingsStore.enableSalesPersons) {
 		return true
 	}
 	if (selectedSalesPersons.value.length === 0) {
@@ -2024,7 +2024,7 @@ watch(
 			console.log('[PaymentDialog] Preloading payment methods for profile:', newProfile)
 			loadPaymentMethods()
 			// Also preload sales persons if enabled
-			if (settingsStore.enableSalesPersons && salesPersons.value.length === 0) {
+			if (settingsStore.enableSalesPersons && !(settingsStore.enableItemSalesPersonCommission && settingsStore.isMultipleSalesPersons) && salesPersons.value.length === 0) {
 				loadingSalesPersons.value = true
 				salesPersonsResource.fetch()
 			}
