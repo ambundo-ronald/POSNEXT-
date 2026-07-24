@@ -96,7 +96,10 @@
 										</div>
 										<FeatherIcon name="credit-card" class="w-5 h-5 text-gray-500" />
 									</div>
-									<div v-if="paymentMethods.length" class="p-5 flex flex-col gap-3">
+									<div v-if="!canViewCashFigures" class="px-5 py-10 text-center text-sm text-gray-500">
+										{{ __("Cash and payment totals are visible to Sales Manager only") }}
+									</div>
+									<div v-else-if="paymentMethods.length" class="p-5 flex flex-col gap-3">
 										<div
 											v-for="method in paymentMethods"
 											:key="method.mode_of_payment"
@@ -235,7 +238,8 @@ const today = getToday()
 
 const hasReport = computed(() => Boolean(report.value))
 const summary = computed(() => report.value?.summary || {})
-const paymentMethods = computed(() => report.value?.payment_methods || [])
+const canViewCashFigures = computed(() => report.value ? report.value.cash_figures_visible !== false : false)
+const paymentMethods = computed(() => canViewCashFigures.value ? report.value?.payment_methods || [] : [])
 const topItems = computed(() => report.value?.top_items || [])
 const recentInvoices = computed(() => report.value?.recent_invoices || [])
 
@@ -252,8 +256,10 @@ const metrics = computed(() => [
 	{
 		key: "collections",
 		label: __("Collected Today"),
-		value: formatCurrency(summary.value.paid_amount),
-		caption: __("Outstanding today {0}", [formatCurrency(summary.value.outstanding_amount)]),
+		value: canViewCashFigures.value ? formatCurrency(summary.value.paid_amount) : __("Restricted"),
+		caption: canViewCashFigures.value
+			? __("Outstanding today {0}", [formatCurrency(summary.value.outstanding_amount)])
+			: __("Visible to Sales Manager only"),
 		icon: "credit-card",
 		iconBg: "bg-blue-100",
 		iconColor: "text-blue-600",

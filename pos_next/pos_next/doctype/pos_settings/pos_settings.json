@@ -249,7 +249,7 @@
    "fieldtype": "Select",
    "label": "Sales Persons Selection",
    "options": "Disabled\nSingle\nMultiple",
-   "description": "Disabled: No sales person selection. Single: Select one sales person (100%). Multiple: Select multiple with allocation percentages."
+   "description": "Disabled: No sales person selection. Single: Select one sales person (100%). Multiple: Select multiple and allocate by percentage or amount."
   },
   {
    "collapsible": 1,

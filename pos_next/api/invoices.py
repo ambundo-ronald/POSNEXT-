@@ -38,6 +38,73 @@ except Exception:  # pragma: no cover - ERPNext not installed in some environmen
 
 # ==========================================
 # Helper Functions
+def normalize_sales_team_allocations(sales_team_data, invoice_total=0):
+    """Validate POS sales team rows and normalize amount allocations to percentages."""
+    if not sales_team_data:
+        return []
+
+    if isinstance(sales_team_data, str):
+        sales_team_data = json.loads(sales_team_data or "[]")
+
+    invoice_total = flt(invoice_total)
+    normalized = []
+    seen = set()
+
+    for member in sales_team_data or []:
+        sales_person = cstr(member.get("sales_person")).strip()
+        if not sales_person:
+            frappe.throw(_("Sales person is required."))
+
+        if sales_person in seen:
+            frappe.throw(_("Sales person {0} is selected more than once.").format(sales_person))
+        seen.add(sales_person)
+
+        if not frappe.db.exists("Sales Person", sales_person):
+            frappe.throw(_("Sales Person {0} does not exist.").format(sales_person))
+
+        allocated_percentage = flt(member.get("allocated_percentage"), 4)
+        allocated_amount = flt(member.get("allocated_amount"), 2)
+
+        if allocated_amount and not allocated_percentage:
+            if not invoice_total:
+                frappe.throw(_("Cannot allocate sales person amount because invoice total is zero."))
+            allocated_percentage = flt((allocated_amount / invoice_total) * 100, 4)
+
+        if allocated_percentage <= 0:
+            frappe.throw(
+                _("Sales person {0} must have an allocation greater than zero.").format(
+                    sales_person
+                )
+            )
+
+        normalized.append(
+            {
+                "sales_person": sales_person,
+                "allocated_percentage": allocated_percentage,
+            }
+        )
+
+    total_percentage = flt(
+        sum(member["allocated_percentage"] for member in normalized), 4
+    )
+    difference = flt(100 - total_percentage, 4)
+
+    if normalized and abs(difference) <= 0.05:
+        normalized[-1]["allocated_percentage"] = flt(
+            normalized[-1]["allocated_percentage"] + difference, 4
+        )
+        total_percentage = 100
+
+    if normalized and abs(total_percentage - 100) > 0.05:
+        frappe.throw(
+            _("Sales person allocations must total 100%. Current total is {0}%.").format(
+                total_percentage
+            )
+        )
+
+    return normalized
+
+
 # ==========================================
 
 CLIENT_TRANSACTION_FIELD = "posa_client_transaction_id"
@@ -862,18 +929,22 @@ def submit_invoice(invoice=None, data=None):
 
         normalize_pos_invoice_payments(invoice_doc, invoice_doc.company)
 
-        # Handle sales team (multiple sales persons)
+        # Handle sales team (single or multiple sales persons)
         sales_team_data = invoice.get("sales_team") or data.get("sales_team")
-        if sales_team_data:
-            # Clear existing sales team entries
+        normalized_sales_team = normalize_sales_team_allocations(
+            sales_team_data,
+            invoice_doc.get("rounded_total") or invoice_doc.get("grand_total") or 0,
+        )
+        if normalized_sales_team:
             invoice_doc.sales_team = []
-
-            # Add new sales team entries
-            for member in sales_team_data:
-                invoice_doc.append("sales_team", {
-                    "sales_person": member.get("sales_person"),
-                    "allocated_percentage": member.get("allocated_percentage", 0),
-                })
+            for member in normalized_sales_team:
+                invoice_doc.append(
+                    "sales_team",
+                    {
+                        "sales_person": member.get("sales_person"),
+                        "allocated_percentage": member.get("allocated_percentage"),
+                    },
+                )
 
         # Handle POS Coupon if coupon_code is provided
         coupon_code = invoice.get("coupon_code") or data.get("coupon_code")
@@ -1188,6 +1259,12 @@ def get_invoices(pos_profile, limit=100):
 			)
 
 	return invoices
+
+def can_view_cash_report_figures():
+	"""Only managers should see cash and payment collection figures in POS reports."""
+	roles = set(frappe.get_roles(frappe.session.user) or [])
+	return bool(roles.intersection({"Sales Manager", "System Manager"}))
+
 
 
 def _validate_sales_report_access(pos_profile, from_date=None, to_date=None):
@@ -1524,6 +1601,9 @@ def export_sales_report(
 	if file_type not in {"xlsx", "pdf"}:
 		frappe.throw(_("Export format must be Excel or PDF"))
 
+	if not can_view_cash_report_figures():
+		frappe.throw(_("Only Sales Manager can export cash/payment reports."), frappe.PermissionError)
+
 	report = _get_sales_report_payment_export(
 		pos_profile,
 		from_date,
@@ -1579,6 +1659,7 @@ def get_sales_report(
 	)
 	limit = cint(limit) or 10
 
+	cash_figures_visible = can_view_cash_report_figures()
 	params = {
 		"pos_profile": pos_profile,
 		"from_date": from_date,
@@ -1716,10 +1797,14 @@ def get_sales_report(
 		payment_map[mode]["amount"] += flt(row.get("amount"))
 		payment_map[mode]["count"] += cint(row.get("count"))
 
-	payment_methods = sorted(
-		payment_map.values(),
-		key=lambda row: row.get("amount") or 0,
-		reverse=True,
+	payment_methods = (
+		sorted(
+			payment_map.values(),
+			key=lambda row: row.get("amount") or 0,
+			reverse=True,
+		)
+		if cash_figures_visible
+		else []
 	)
 
 	recent_invoices = frappe.db.sql(
@@ -1754,9 +1839,15 @@ def get_sales_report(
 		as_dict=True,
 	)
 
+	if not cash_figures_visible:
+		for invoice in recent_invoices:
+			invoice.paid_amount = None
+			invoice.outstanding_amount = None
+
 	return {
 		"from_date": from_date,
 		"to_date": to_date,
+		"cash_figures_visible": cash_figures_visible,
 		"summary": {
 			"invoice_count": cint(summary.get("invoice_count")),
 			"sale_count": cint(summary.get("sale_count")),
@@ -1764,8 +1855,8 @@ def get_sales_report(
 			"gross_sales": flt(summary.get("gross_sales")),
 			"returns_total": flt(summary.get("returns_total")),
 			"net_sales": flt(summary.get("net_sales")),
-			"paid_amount": flt(summary.get("paid_amount")),
-			"outstanding_amount": flt(summary.get("outstanding_amount")),
+			"paid_amount": flt(summary.get("paid_amount")) if cash_figures_visible else None,
+			"outstanding_amount": flt(summary.get("outstanding_amount")) if cash_figures_visible else None,
 			"discount_amount": flt(summary.get("discount_amount")),
 			"quantity": flt(items_summary.get("quantity")),
 			"items_total": flt(items_summary.get("amount")),

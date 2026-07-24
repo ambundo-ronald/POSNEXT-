@@ -62,6 +62,7 @@
 								{{ __("Refresh") }}
 							</Button>
 							<Button
+								v-if="canViewCashFigures"
 								@click="exportReport('xlsx')"
 								:loading="exporting === 'xlsx'"
 								:disabled="loading || Boolean(exporting)"
@@ -73,6 +74,7 @@
 								{{ __("Excel") }}
 							</Button>
 							<Button
+								v-if="canViewCashFigures"
 								@click="exportReport('pdf')"
 								:loading="exporting === 'pdf'"
 								:disabled="loading || Boolean(exporting)"
@@ -126,7 +128,10 @@
 										</div>
 										<FeatherIcon name="credit-card" class="w-5 h-5 text-gray-500" />
 									</div>
-									<div v-if="paymentMethods.length" class="divide-y divide-gray-100">
+									<div v-if="!canViewCashFigures" class="px-5 py-10 text-center text-sm text-gray-500">
+										{{ __("Cash and payment totals are visible to Sales Manager only") }}
+									</div>
+									<div v-else-if="paymentMethods.length" class="divide-y divide-gray-100">
 										<div
 											v-for="method in paymentMethods"
 											:key="method.mode_of_payment"
@@ -211,7 +216,7 @@
 												<td class="px-5 py-3 text-sm text-gray-700">{{ invoice.sales_person || __("Unassigned") }}</td>
 												<td class="px-5 py-3 text-sm text-gray-600">{{ formatDate(invoice.posting_date) }}</td>
 												<td class="px-5 py-3 text-sm font-semibold text-end text-gray-900">{{ formatCurrency(invoice.grand_total) }}</td>
-												<td class="px-5 py-3 text-sm font-semibold text-end text-orange-600">{{ formatCurrency(invoice.outstanding_amount) }}</td>
+												<td class="px-5 py-3 text-sm font-semibold text-end text-orange-600">{{ canViewCashFigures ? formatCurrency(invoice.outstanding_amount) : __("Restricted") }}</td>
 											</tr>
 										</tbody>
 									</table>
@@ -260,7 +265,8 @@ const selectedSalesPerson = ref("")
 
 const hasReport = computed(() => Boolean(report.value))
 const summary = computed(() => report.value?.summary || {})
-const paymentMethods = computed(() => report.value?.payment_methods || [])
+const canViewCashFigures = computed(() => report.value ? report.value.cash_figures_visible !== false : false)
+const paymentMethods = computed(() => canViewCashFigures.value ? report.value?.payment_methods || [] : [])
 const salesPersons = computed(() => report.value?.sales_persons || [])
 const topItems = computed(() => report.value?.top_items || [])
 const recentInvoices = computed(() => report.value?.recent_invoices || [])
@@ -281,10 +287,10 @@ const metrics = computed(() => [
 	{
 		key: "paid",
 		label: __("Collected"),
-		value: formatCurrency(summary.value.paid_amount),
-		caption: __("Outstanding {0}", [
-			formatCurrency(summary.value.outstanding_amount),
-		]),
+		value: canViewCashFigures.value ? formatCurrency(summary.value.paid_amount) : __("Restricted"),
+		caption: canViewCashFigures.value
+			? __("Outstanding {0}", [formatCurrency(summary.value.outstanding_amount)])
+			: __("Visible to Sales Manager only"),
 		icon: "credit-card",
 		iconBg: "bg-blue-100",
 		iconColor: "text-blue-600",

@@ -767,6 +767,7 @@ export function useInvoice() {
 				invoiceData.sales_team = rawSalesTeam.map((member) => ({
 					sales_person: member.sales_person,
 					allocated_percentage: member.allocated_percentage || 0,
+					allocated_amount: member.allocated_amount || 0,
 				}))
 			}
 

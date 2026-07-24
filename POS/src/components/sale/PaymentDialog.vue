@@ -192,13 +192,39 @@
 
 					<!-- Selected Sales Persons (Chips) -->
 					<div v-if="selectedSalesPersons.length > 0" class="mb-2 flex flex-col gap-1.5">
-						<div class="text-[10px] font-semibold text-purple-700 uppercase tracking-wide mb-1">{{ __('Selected:') }}</div>
+						<div class="flex items-center justify-between gap-2 mb-1">
+							<div class="text-[10px] font-semibold text-purple-700 uppercase tracking-wide">{{ __('Selected:') }}</div>
+							<div v-if="settingsStore.isMultipleSalesPersons" class="inline-flex rounded-lg border border-purple-300 bg-white p-0.5">
+								<button
+									@click="setSalesPersonAllocationMode('percentage')"
+									:class="[
+										'px-2 py-1 text-[10px] font-semibold rounded-md transition-colors',
+										salesPersonAllocationMode === 'percentage'
+											? 'bg-purple-600 text-white'
+											: 'text-purple-700 hover:bg-purple-50'
+									]"
+								>
+									{{ __('Percentage') }}
+								</button>
+								<button
+									@click="setSalesPersonAllocationMode('amount')"
+									:class="[
+										'px-2 py-1 text-[10px] font-semibold rounded-md transition-colors',
+										salesPersonAllocationMode === 'amount'
+											? 'bg-purple-600 text-white'
+											: 'text-purple-700 hover:bg-purple-50'
+									]"
+								>
+									{{ __('Amount') }}
+								</button>
+							</div>
+						</div>
 						<div
 							v-for="person in selectedSalesPersons"
 							:key="person.sales_person"
 							class="flex items-center justify-between p-2 bg-purple-100 border border-purple-300 rounded-lg"
 						>
-							<div class="flex items-center gap-2 flex-1">
+							<div class="flex items-center gap-2 flex-1 min-w-0">
 								<button
 									@click="removeSalesPerson(person.sales_person)"
 									class="text-purple-600 hover:text-purple-800 hover:bg-purple-200 rounded p-0.5 transition-colors"
@@ -207,37 +233,35 @@
 										<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
 									</svg>
 								</button>
-								<span class="text-xs font-medium text-gray-900 flex-1">
+								<span class="text-xs font-medium text-gray-900 flex-1 truncate">
 									{{ person.sales_person_name || person.sales_person }}
 								</span>
 							</div>
-							<!-- Only show allocation input for Multiple mode -->
 							<div v-if="settingsStore.isMultipleSalesPersons" class="flex items-center gap-1">
+								<span v-if="salesPersonAllocationMode === 'amount'" class="text-[10px] text-gray-600 font-medium">{{ currencySymbol }}</span>
 								<input
 									type="number"
-									:value="person.allocated_percentage"
+									:value="salesPersonAllocationMode === 'amount' ? person.allocated_amount : person.allocated_percentage"
 									@input="updateSalesPersonAllocation(person.sales_person, $event.target.value)"
-									placeholder="%"
+									:placeholder="salesPersonAllocationMode === 'amount' ? '0.00' : '%'"
 									min="0"
-									max="100"
-									step="1"
-									class="w-14 px-1.5 py-1 text-xs font-semibold text-end border border-purple-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
+									:max="salesPersonAllocationMode === 'amount' ? grandTotal : 100"
+									step="0.01"
+									class="w-20 px-1.5 py-1 text-xs font-semibold text-end border border-purple-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
 								/>
-								<span class="text-xs text-gray-600 font-medium">%</span>
+								<span v-if="salesPersonAllocationMode === 'percentage'" class="text-xs text-gray-600 font-medium">%</span>
 							</div>
-							<!-- Show 100% badge for Single mode -->
 							<div v-else class="text-xs font-semibold text-purple-700 bg-purple-200 px-2 py-1 rounded">
 								100%
 							</div>
 						</div>
 
-						<!-- Total Allocation Warning (only for Multiple mode) -->
-						<div v-if="settingsStore.isMultipleSalesPersons && totalAllocation !== 100" class="flex items-center gap-2 p-2 bg-yellow-50 border border-yellow-300 rounded mt-2">
+						<div v-if="settingsStore.isMultipleSalesPersons && !isSalesPersonAllocationValid" class="flex items-center gap-2 p-2 bg-yellow-50 border border-yellow-300 rounded mt-2">
 							<svg class="w-4 h-4 text-yellow-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
 								<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
 							</svg>
 							<span class="text-xs font-medium text-yellow-800">
-								{{ __('Total: {0}% (should be 100%)', [totalAllocation]) }}
+								{{ salesPersonAllocationMessage }}
 							</span>
 						</div>
 					</div>
@@ -1145,6 +1169,7 @@ const salesPersons = ref([])
 const selectedSalesPersons = ref([])
 const salesPersonSearch = ref('')
 const loadingSalesPersons = ref(false)
+const salesPersonAllocationMode = ref('percentage')
 
 const salesPersonsResource = createResource({
 	url: "pos_next.api.pos_profile.get_sales_persons",
@@ -1188,34 +1213,114 @@ const filteredSalesPersons = computed(() => {
 		.slice(0, 10) // Limit to 10 results for performance
 })
 
-// Computed for total allocation percentage
-const totalAllocation = computed(() => {
-	return selectedSalesPersons.value.reduce((sum, person) => {
-		return sum + (person.allocated_percentage || 0)
-	}, 0)
+function toPositiveNumber(value) {
+	const number = Number.parseFloat(value)
+	return Number.isFinite(number) && number > 0 ? number : 0
+}
+
+function round4(value) {
+	return Number(Number(value || 0).toFixed(4))
+}
+
+const invoiceSalesTeamTotal = computed(() => round2(props.grandTotal || 0))
+
+const totalAllocation = computed(() => round4(
+	selectedSalesPersons.value.reduce((sum, person) => {
+		return sum + toPositiveNumber(person.allocated_percentage)
+	}, 0),
+))
+
+const totalSalesPersonAmount = computed(() => round2(
+	selectedSalesPersons.value.reduce((sum, person) => {
+		return sum + toPositiveNumber(person.allocated_amount)
+	}, 0),
+))
+
+const normalizedSalesTeam = computed(() => {
+	return selectedSalesPersons.value.map((person) => {
+		let allocatedPercentage = toPositiveNumber(person.allocated_percentage)
+		let allocatedAmount = toPositiveNumber(person.allocated_amount)
+
+		if (settingsStore.isSingleSalesPerson) {
+			allocatedPercentage = 100
+			allocatedAmount = invoiceSalesTeamTotal.value
+		} else if (salesPersonAllocationMode.value === 'amount') {
+			allocatedPercentage = invoiceSalesTeamTotal.value > 0
+				? (allocatedAmount / invoiceSalesTeamTotal.value) * 100
+				: 0
+		} else {
+			allocatedAmount = invoiceSalesTeamTotal.value * allocatedPercentage / 100
+		}
+
+		return {
+			sales_person: person.sales_person,
+			sales_person_name: person.sales_person_name || person.sales_person,
+			allocated_percentage: round4(allocatedPercentage),
+			allocated_amount: round2(allocatedAmount),
+			commission_rate: person.commission_rate,
+		}
+	})
 })
+
+const isSalesPersonAllocationValid = computed(() => {
+	if (!settingsStore.enableSalesPersons) {
+		return true
+	}
+	if (selectedSalesPersons.value.length === 0) {
+		return false
+	}
+	if (!settingsStore.isMultipleSalesPersons) {
+		return selectedSalesPersons.value.length === 1
+	}
+	if (salesPersonAllocationMode.value === 'amount') {
+		return Math.abs(totalSalesPersonAmount.value - invoiceSalesTeamTotal.value) <= 0.01
+	}
+	return Math.abs(totalAllocation.value - 100) <= 0.01
+})
+
+const salesPersonAllocationMessage = computed(() => {
+	if (selectedSalesPersons.value.length === 0) {
+		return __('Select at least one sales person')
+	}
+	if (salesPersonAllocationMode.value === 'amount') {
+		return __('Total: {0} (should be {1})', [
+			formatCurrency(totalSalesPersonAmount.value),
+			formatCurrency(invoiceSalesTeamTotal.value),
+		])
+	}
+	return __('Total: {0}% (should be 100%)', [totalAllocation.value])
+})
+
+function setSalesPersonAllocationMode(mode) {
+	salesPersonAllocationMode.value = mode
+	selectedSalesPersons.value.forEach((person) => {
+		if (mode === 'amount') {
+			person.allocated_amount = round2(invoiceSalesTeamTotal.value * toPositiveNumber(person.allocated_percentage) / 100)
+		} else {
+			person.allocated_percentage = invoiceSalesTeamTotal.value > 0
+				? round4(toPositiveNumber(person.allocated_amount) / invoiceSalesTeamTotal.value * 100)
+				: 0
+		}
+	})
+}
 
 // Helper functions for sales persons
 function addSalesPerson(person) {
-	// For Single mode, replace the existing selection
-	if (settingsStore.isSingleSalesPerson) {
-		selectedSalesPersons.value = [{
-			sales_person: person.name,
-			sales_person_name: person.sales_person_name || person.name,
-			allocated_percentage: 100, // Always 100% for single mode
-			commission_rate: person.commission_rate,
-		}]
-	} else {
-		// For Multiple mode, add to the list
-		// Calculate default allocation
-		const defaultAllocation = selectedSalesPersons.value.length === 0 ? 100 : 0
+	const isFirstSelection = selectedSalesPersons.value.length === 0
+	const defaultPercentage = isFirstSelection ? 100 : 0
+	const defaultAmount = isFirstSelection ? invoiceSalesTeamTotal.value : 0
+	const row = {
+		sales_person: person.name,
+		sales_person_name: person.sales_person_name || person.name,
+		allocated_percentage: settingsStore.isSingleSalesPerson ? 100 : defaultPercentage,
+		allocated_amount: settingsStore.isSingleSalesPerson ? invoiceSalesTeamTotal.value : defaultAmount,
+		commission_rate: person.commission_rate,
+	}
 
-		selectedSalesPersons.value.push({
-			sales_person: person.name,
-			sales_person_name: person.sales_person_name || person.name,
-			allocated_percentage: defaultAllocation,
-			commission_rate: person.commission_rate,
-		})
+	if (settingsStore.isSingleSalesPerson) {
+		selectedSalesPersons.value = [row]
+	} else {
+		selectedSalesPersons.value.push(row)
 	}
 
 	// Clear search after adding
@@ -1231,8 +1336,18 @@ function removeSalesPerson(personName) {
 
 function updateSalesPersonAllocation(personName, value) {
 	const person = selectedSalesPersons.value.find(p => p.sales_person === personName)
-	if (person) {
-		person.allocated_percentage = Number.parseFloat(value) || 0
+	if (!person) {
+		return
+	}
+
+	if (salesPersonAllocationMode.value === 'amount') {
+		person.allocated_amount = round2(toPositiveNumber(value))
+		person.allocated_percentage = invoiceSalesTeamTotal.value > 0
+			? round4(person.allocated_amount / invoiceSalesTeamTotal.value * 100)
+			: 0
+	} else {
+		person.allocated_percentage = round4(toPositiveNumber(value))
+		person.allocated_amount = round2(invoiceSalesTeamTotal.value * person.allocated_percentage / 100)
 	}
 }
 
@@ -1241,6 +1356,20 @@ function clearSalesPersons() {
 	salesPersonSearch.value = ''
 }
 
+watch(invoiceSalesTeamTotal, () => {
+	selectedSalesPersons.value.forEach((person) => {
+		if (settingsStore.isSingleSalesPerson) {
+			person.allocated_percentage = 100
+			person.allocated_amount = invoiceSalesTeamTotal.value
+		} else if (salesPersonAllocationMode.value === 'percentage') {
+			person.allocated_amount = round2(invoiceSalesTeamTotal.value * toPositiveNumber(person.allocated_percentage) / 100)
+		} else {
+			person.allocated_percentage = invoiceSalesTeamTotal.value > 0
+				? round4(toPositiveNumber(person.allocated_amount) / invoiceSalesTeamTotal.value * 100)
+				: 0
+		}
+	})
+})
 // Load payment methods - from cache if offline, from server if online
 async function loadPaymentMethods() {
 	// Guard: Don't load if posProfile is not set or already loading
@@ -1707,7 +1836,9 @@ function autoApplySmsEnablerMatch() {
 const currencySymbol = computed(() => getCurrencySymbol(props.currency))
 
 // Helper to round to 2 decimal places (handles floating-point precision)
-const round2 = (val) => Number(Number(val).toFixed(2))
+function round2(val) {
+	return Number(Number(val).toFixed(2))
+}
 
 const totalPaid = computed(() => {
 	const sum = paymentEntries.value.reduce(
@@ -1799,15 +1930,15 @@ const canComplete = computed(() => {
 	const hasPositivePayment = paymentEntries.value.some(
 		(entry) => getPaymentAmount(entry) > 0,
 	)
+	const hasValidSalesTeam = isSalesPersonAllocationValid.value
 
 	// If partial payment is allowed, can complete with any amount > 0
 	if (props.allowPartialPayment) {
-		return totalPaid.value > 0 && hasPositivePayment
+		return totalPaid.value > 0 && hasPositivePayment && hasValidSalesTeam
 	}
 	// Otherwise require full payment
-	return remainingAmount.value === 0 && hasPositivePayment
+	return remainingAmount.value === 0 && hasPositivePayment && hasValidSalesTeam
 })
-
 const paymentButtonText = computed(() => {
 	if (remainingAmount.value === 0) {
 		return __("Complete Payment")
@@ -1913,6 +2044,7 @@ watch(show, (newVal) => {
 		customerBalance.value = { total_outstanding: 0, total_credit: 0, net_balance: 0 }
 		selectedSalesPersons.value = []
 		salesPersonSearch.value = ''
+		salesPersonAllocationMode.value = 'percentage'
 		showMpesaPanel.value = false
 		mpesaSearch.value = ""
 		mpesaPayments.value = []
@@ -2051,6 +2183,11 @@ function applyCustomerCredit() {
 function addCreditAccountPayment() {
 	if (props.isProcessing) return
 
+	if (!isSalesPersonAllocationValid.value) {
+		showWarning(salesPersonAllocationMessage.value)
+		return
+	}
+
 	console.log('[PaymentDialog] Add credit account payment (Pay Later):', {
 		grandTotal: props.grandTotal,
 		currentPaid: totalPaid.value,
@@ -2066,6 +2203,7 @@ function addCreditAccountPayment() {
 		is_credit_sale: true,  // Mark as credit sale
 		paid_amount: 0,
 		outstanding_amount: props.grandTotal,
+		sales_team: normalizedSalesTeam.value.length > 0 ? normalizedSalesTeam.value : null,
 	}
 
 	console.log('[PaymentDialog] Emitting credit sale payment-completed:', paymentData)
@@ -2164,7 +2302,7 @@ function completePayment() {
 		is_partial_payment: isPartial,
 		paid_amount: totalPaid.value,
 		outstanding_amount: isPartial ? remainingAmount.value : 0,
-		sales_team: selectedSalesPersons.value.length > 0 ? selectedSalesPersons.value : null,
+		sales_team: normalizedSalesTeam.value.length > 0 ? normalizedSalesTeam.value : null,
 		mpesa_payments: validPaymentEntries
 			.filter((entry) => entry.is_mpesa && entry.mpesa_payment_name)
 			.map((entry) => ({
