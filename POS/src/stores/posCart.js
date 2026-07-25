@@ -749,6 +749,9 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			if (updatedDetails.posa_commission_amount !== undefined) {
 				cartItem.posa_commission_amount = Number.parseFloat(updatedDetails.posa_commission_amount || 0) || 0
 			}
+			if (updatedDetails.posa_sales_person_allocations !== undefined) {
+				cartItem.posa_sales_person_allocations = updatedDetails.posa_sales_person_allocations || ""
+			}
 			// Update price_list_rate if provided (for UOM changes). Manual rate
 			// edits set price_list_rate above so recalculateItem preserves them.
 			if (updatedDetails.price_list_rate !== undefined && !canEditRate) {
@@ -780,12 +783,32 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		salesPersonCommissionMode.value = mode === "itemized" ? "itemized" : "single"
 	}
 
+	function parseItemSalesPersonAllocations(item) {
+		const value = item?.posa_sales_person_allocations
+		if (!value) return []
+		if (Array.isArray(value)) return value
+		try {
+			const parsed = JSON.parse(value)
+			return Array.isArray(parsed) ? parsed : []
+		} catch {
+			return []
+		}
+	}
+
+	function hasItemSalesPersonAssignment(item) {
+		const allocations = parseItemSalesPersonAllocations(item)
+		if (allocations.length) {
+			return allocations.every((row) => row.sales_person)
+		}
+		return Boolean(item.posa_sales_person)
+	}
+
 	function getItemsMissingSalesPerson() {
 		if (!settingsStore.enableItemSalesPersonCommission || !isItemizedSalesPersonCommissionMode.value) {
 			return []
 		}
 
-		return invoiceItems.value.filter((item) => !item.posa_sales_person)
+		return invoiceItems.value.filter((item) => !hasItemSalesPersonAssignment(item))
 	}
 
 	function applySalesPersonToAllItems(member) {
@@ -797,6 +820,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		invoiceItems.value.forEach((item) => {
 			item.posa_sales_person = salesPerson
 			item.posa_sales_person_name = member.sales_person_name || salesPerson
+			item.posa_sales_person_allocations = ""
 			recalculateItem(item)
 		})
 		rebuildIncrementalCache()
@@ -809,19 +833,36 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		}
 
 		const totalsByPerson = new Map()
+		function addAmount(salesPerson, salesPersonName, amount) {
+			if (!salesPerson || amount <= 0) return
+			const current = totalsByPerson.get(salesPerson) || {
+				sales_person: salesPerson,
+				sales_person_name: salesPersonName || salesPerson,
+				allocated_amount: 0,
+			}
+			current.allocated_amount += amount
+			totalsByPerson.set(salesPerson, current)
+		}
+
 		for (const item of invoiceItems.value) {
-			if (!item.posa_sales_person) continue
+			const allocations = parseItemSalesPersonAllocations(item)
+			if (allocations.length) {
+				allocations.forEach((row) => addAmount(
+					row.sales_person,
+					row.sales_person_name || row.sales_person,
+					Number.parseFloat(row.allocated_amount || 0) || 0,
+				))
+				continue
+			}
 
 			const lineAmount = Number.parseFloat(
 				item.amount ?? ((item.price_list_rate || item.rate || 0) * (item.quantity || 0)),
 			) || 0
-			const current = totalsByPerson.get(item.posa_sales_person) || {
-				sales_person: item.posa_sales_person,
-				sales_person_name: item.posa_sales_person_name || item.posa_sales_person,
-				allocated_amount: 0,
-			}
-			current.allocated_amount += lineAmount
-			totalsByPerson.set(item.posa_sales_person, current)
+			addAmount(
+				item.posa_sales_person,
+				item.posa_sales_person_name || item.posa_sales_person,
+				lineAmount,
+			)
 		}
 
 		const rows = Array.from(totalsByPerson.values())

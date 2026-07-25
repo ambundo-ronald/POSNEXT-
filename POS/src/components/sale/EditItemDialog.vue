@@ -197,8 +197,28 @@
 
 				<!-- Item Sales Person Commission -->
 				<div v-if="showItemSalesPersonCommission" class="border-t border-gray-200 pt-4">
-					<label class="block text-sm font-medium text-gray-700 mb-3 text-start">{{ __('Sales Person Commission') }}</label>
-					<div class="grid grid-cols-2 gap-3">
+					<div class="flex items-center justify-between gap-3 mb-3">
+						<label class="block text-sm font-medium text-gray-700 text-start">{{ __('Sales Person Commission') }}</label>
+						<div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+							<button
+								type="button"
+								@click="setItemSalesPersonMode('single')"
+								:class="itemSalesPersonMode === 'single' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'"
+								class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
+							>
+								{{ __('One') }}
+							</button>
+							<button
+								type="button"
+								@click="setItemSalesPersonMode('split')"
+								:class="itemSalesPersonMode === 'split' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'"
+								class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
+							>
+								{{ __('Split') }}
+							</button>
+						</div>
+					</div>
+					<div v-if="itemSalesPersonMode === 'single'" class="grid grid-cols-2 gap-3">
 						<div>
 							<label class="block text-xs text-gray-600 mb-1 text-start">{{ __('Sales Person') }}</label>
 							<select
@@ -231,8 +251,102 @@
 							</div>
 						</div>
 					</div>
-					<div class="mt-2 text-xs text-gray-600 text-start">
+					<div v-if="itemSalesPersonMode === 'single'" class="mt-2 text-xs text-gray-600 text-start">
 						{{ __('Estimated commission: {0}', [formatCurrency(commissionAmount)]) }}
+					</div>
+					<div v-if="itemSalesPersonMode === 'split'" class="mt-4 space-y-3">
+						<div class="grid grid-cols-2 gap-3">
+							<div>
+								<label class="block text-xs text-gray-600 mb-1 text-start">{{ __('Commission %') }}</label>
+								<div class="relative">
+									<input
+										v-model.number="localCommissionRate"
+										type="number"
+										min="0"
+										max="100"
+										step="0.01"
+										class="w-full border border-gray-300 rounded-lg px-3 py-2 pe-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+									/>
+									<span class="absolute inset-y-0 end-0 pe-3 flex items-center text-gray-500 text-sm">%</span>
+								</div>
+							</div>
+							<div>
+								<label class="block text-xs text-gray-600 mb-1 text-start">{{ __('Split By') }}</label>
+								<select
+									v-model="splitAllocationMode"
+									@change="handleSplitAllocationModeChange"
+									class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+								>
+									<option value="percentage">{{ __('Percentage') }}</option>
+									<option value="amount">{{ __('Amount') }}</option>
+								</select>
+							</div>
+						</div>
+						<div class="space-y-2">
+							<div
+								v-for="(row, index) in splitRows"
+								:key="row.id"
+								class="grid grid-cols-[1fr_120px_36px] gap-2 items-end"
+							>
+								<div>
+									<label class="block text-xs text-gray-600 mb-1 text-start">{{ __('Sales Person') }}</label>
+									<select
+										v-model="row.sales_person"
+										@change="handleSplitSalesPersonChange(row)"
+										class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+									>
+										<option value="">{{ loadingSalesPersons ? __('Loading...') : __('Select sales person') }}</option>
+										<option
+											v-for="person in salesPersons"
+											:key="person.name"
+											:value="person.name"
+										>
+											{{ person.sales_person_name || person.name }}
+										</option>
+									</select>
+								</div>
+								<div>
+									<label class="block text-xs text-gray-600 mb-1 text-start">
+										{{ splitAllocationMode === 'percentage' ? __('Share %') : __('Amount') }}
+									</label>
+									<input
+										v-model.number="row.share"
+										@input="normalizeSplitRows"
+										type="number"
+										min="0"
+										:max="splitAllocationMode === 'percentage' ? 100 : calculatedTotal"
+										step="0.01"
+										class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+									/>
+								</div>
+								<button
+									type="button"
+									@click="removeSplitRow(index)"
+									:disabled="splitRows.length <= 1"
+									class="h-9 w-9 inline-flex items-center justify-center rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+									:title="__('Remove')"
+								>
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+									</svg>
+								</button>
+							</div>
+						</div>
+						<div class="flex items-center justify-between gap-3">
+							<button
+								type="button"
+								@click="addSplitRow"
+								class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+							>
+								{{ __('Add Sales Person') }}
+							</button>
+							<div class="text-xs text-gray-600 text-end">
+								<div>{{ __('Allocated: {0}', [formatCurrency(splitAllocatedAmount)]) }}</div>
+								<div :class="splitBalanceAmount === 0 ? 'text-green-600' : 'text-orange-600'">
+									{{ __('Balance: {0}', [formatCurrency(splitBalanceAmount)]) }}
+								</div>
+							</div>
+						</div>
 					</div>
 				</div>
 
@@ -363,6 +477,11 @@ const loadingSalesPersons = ref(false)
 const localSalesPerson = ref("")
 const localSalesPersonName = ref("")
 const localCommissionRate = ref(0)
+const itemSalesPersonMode = ref("single")
+const splitAllocationMode = ref("percentage")
+const splitRows = ref([])
+let splitRowId = 0
+let previousSplitAllocationMode = "percentage"
 
 const show = computed({
 	get: () => props.modelValue,
@@ -387,12 +506,33 @@ const canEditRate = computed(() =>
 const showItemSalesPersonCommission = computed(() =>
 	settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode,
 )
-const missingItemSalesPerson = computed(() =>
-	showItemSalesPersonCommission.value && !localSalesPerson.value,
-)
+const missingItemSalesPerson = computed(() => {
+	if (!showItemSalesPersonCommission.value) {
+		return false
+	}
+	if (itemSalesPersonMode.value === "split") {
+		return !hasValidSplitAllocations.value
+	}
+	return !localSalesPerson.value
+})
 const commissionAmount = computed(() => {
 	const rate = Number.parseFloat(localCommissionRate.value || 0) || 0
 	return Number(((calculatedTotal.value || 0) * rate / 100).toFixed(2))
+})
+
+const normalizedSplitRows = computed(() => buildSplitAllocations())
+const splitAllocatedAmount = computed(() =>
+	Number(normalizedSplitRows.value.reduce((sum, row) => sum + row.allocated_amount, 0).toFixed(2)),
+)
+const splitBalanceAmount = computed(() =>
+	Number(((calculatedTotal.value || 0) - splitAllocatedAmount.value).toFixed(2)),
+)
+const hasValidSplitAllocations = computed(() => {
+	const rows = normalizedSplitRows.value
+	if (!rows.length || rows.some((row) => !row.sales_person)) {
+		return false
+	}
+	return Math.abs(splitBalanceAmount.value) <= 0.01
 })
 
 const salesPersonsResource = createResource({
@@ -437,6 +577,7 @@ watch(
 			localSalesPerson.value = newItem.posa_sales_person || ""
 			localSalesPersonName.value = newItem.posa_sales_person_name || ""
 			localCommissionRate.value = Number.parseFloat(newItem.posa_commission_rate || 0) || 0
+			initializeSplitState(newItem)
 
 			if (showItemSalesPersonCommission.value) {
 				loadSalesPersons()
@@ -578,6 +719,154 @@ async function handleSalesPersonChange() {
 	localSalesPersonName.value = person?.sales_person_name || person?.name || localSalesPerson.value || ""
 }
 
+function safeParseJson(value, fallback = []) {
+	if (!value) return fallback
+	if (Array.isArray(value)) return value
+	try {
+		const parsed = JSON.parse(value)
+		return Array.isArray(parsed) ? parsed : fallback
+	} catch {
+		return fallback
+	}
+}
+
+function createSplitRow(data = {}) {
+	return {
+		id: ++splitRowId,
+		sales_person: data.sales_person || "",
+		sales_person_name: data.sales_person_name || "",
+		share: Number.parseFloat(data.share ?? data.allocated_percentage ?? data.allocated_amount ?? 0) || 0,
+	}
+}
+
+function initializeSplitState(item) {
+	const allocations = safeParseJson(item.posa_sales_person_allocations)
+	if (allocations.length) {
+		itemSalesPersonMode.value = "split"
+		splitAllocationMode.value = allocations.some((row) => Number.parseFloat(row.allocated_percentage || 0) > 0)
+			? "percentage"
+			: "amount"
+		previousSplitAllocationMode = splitAllocationMode.value
+		splitRows.value = allocations.map((row) => createSplitRow({
+			sales_person: row.sales_person,
+			sales_person_name: row.sales_person_name,
+			share: splitAllocationMode.value === "percentage"
+				? row.allocated_percentage
+				: row.allocated_amount,
+		}))
+		return
+	}
+
+	itemSalesPersonMode.value = "single"
+	splitAllocationMode.value = "percentage"
+	previousSplitAllocationMode = splitAllocationMode.value
+	splitRows.value = [createSplitRow({ share: 100 })]
+}
+
+function setItemSalesPersonMode(mode) {
+	itemSalesPersonMode.value = mode === "split" ? "split" : "single"
+	if (itemSalesPersonMode.value !== "split") {
+		return
+	}
+
+	if (!splitRows.value.length) {
+		splitRows.value = [createSplitRow({
+			sales_person: localSalesPerson.value,
+			sales_person_name: localSalesPersonName.value,
+			share: splitAllocationMode.value === "percentage" ? 100 : calculatedTotal.value,
+		})]
+		return
+	}
+
+	if (splitRows.value.length === 1 && localSalesPerson.value && !splitRows.value[0].sales_person) {
+		splitRows.value[0].sales_person = localSalesPerson.value
+		splitRows.value[0].sales_person_name = localSalesPersonName.value || localSalesPerson.value
+	}
+}
+
+function addSplitRow() {
+	splitRows.value.push(createSplitRow())
+}
+
+function removeSplitRow(index) {
+	if (splitRows.value.length <= 1) return
+	splitRows.value.splice(index, 1)
+	normalizeSplitRows()
+}
+
+function handleSplitSalesPersonChange(row) {
+	const person = salesPersons.value.find((personRow) => personRow.name === row.sales_person)
+	row.sales_person_name = person?.sales_person_name || person?.name || row.sales_person || ""
+}
+
+function normalizeSplitRows() {
+	for (const row of splitRows.value) {
+		const share = Number.parseFloat(row.share || 0) || 0
+		row.share = Math.max(0, share)
+	}
+}
+
+function handleSplitAllocationModeChange() {
+	const total = Number.parseFloat(calculatedTotal.value || 0) || 0
+	const newMode = splitAllocationMode.value
+	const oldMode = previousSplitAllocationMode
+	splitRows.value = splitRows.value.map((row) => {
+		const oldShare = Number.parseFloat(row.share || 0) || 0
+		const amount = oldMode === "percentage"
+			? Number((total * oldShare / 100).toFixed(2))
+			: oldShare
+		const share = newMode === "percentage"
+			? (total > 0 ? Number((amount / total * 100).toFixed(4)) : 0)
+			: amount
+		return createSplitRow({
+			sales_person: row.sales_person,
+			sales_person_name: row.sales_person_name,
+			share,
+		})
+	})
+	if (!splitRows.value.length) {
+		splitRows.value = [createSplitRow({ share: newMode === "percentage" ? 100 : total })]
+	}
+	previousSplitAllocationMode = newMode
+}
+
+function buildSplitAllocations() {
+	const total = Number.parseFloat(calculatedTotal.value || 0) || 0
+	const rate = Number.parseFloat(localCommissionRate.value || 0) || 0
+	const rows = splitRows.value
+		.map((row) => ({
+			sales_person: row.sales_person || "",
+			sales_person_name: row.sales_person_name || row.sales_person || "",
+			share: Number.parseFloat(row.share || 0) || 0,
+		}))
+		.filter((row) => row.sales_person || row.share > 0)
+
+	let allocated = 0
+	return rows.map((row, index) => {
+		const isLast = index === rows.length - 1
+		const percentage = splitAllocationMode.value === "percentage"
+			? Number(row.share.toFixed(4))
+			: total > 0
+				? Number((row.share / total * 100).toFixed(4))
+				: 0
+		const amount = splitAllocationMode.value === "percentage"
+			? Number((total * percentage / 100).toFixed(2))
+			: Number(row.share.toFixed(2))
+		allocated += amount
+		const finalAmount = isLast && Math.abs(total - allocated) <= 0.01
+			? Number((amount + total - allocated).toFixed(2))
+			: amount
+		return {
+			sales_person: row.sales_person,
+			sales_person_name: row.sales_person_name,
+			allocated_percentage: percentage,
+			allocated_amount: finalAmount,
+			commission_rate: rate,
+			commission_amount: Number((finalAmount * rate / 100).toFixed(2)),
+		}
+	})
+}
+
 async function handleWarehouseChange() {
 	if (!localItem.value || !localWarehouse.value) return
 
@@ -667,10 +956,14 @@ function formatCurrency(amount) {
 
 function updateItem() {
 	if (missingItemSalesPerson.value) {
-		showWarning(__("Select a sales person for this item before updating."))
+		showWarning(itemSalesPersonMode.value === "split"
+			? __("Allocate this item fully across sales persons before updating.")
+			: __("Select a sales person for this item before updating."))
 		return
 	}
 
+	const splitAllocations = itemSalesPersonMode.value === "split" ? normalizedSplitRows.value : []
+	const primaryAllocation = splitAllocations[0]
 	const editedRate = Number.parseFloat(localRate.value) || 0
 	const updatedItem = {
 		...localItem.value,
@@ -681,10 +974,19 @@ function updateItem() {
 			? editedRate
 			: localItem.value.price_list_rate,
 		warehouse: localWarehouse.value,
-		posa_sales_person: localSalesPerson.value || "",
-		posa_sales_person_name: localSalesPersonName.value || "",
+		posa_sales_person: itemSalesPersonMode.value === "split"
+			? primaryAllocation?.sales_person || ""
+			: localSalesPerson.value || "",
+		posa_sales_person_name: itemSalesPersonMode.value === "split"
+			? primaryAllocation?.sales_person_name || primaryAllocation?.sales_person || ""
+			: localSalesPersonName.value || "",
 		posa_commission_rate: Number.parseFloat(localCommissionRate.value || 0) || 0,
-		posa_commission_amount: commissionAmount.value,
+		posa_commission_amount: itemSalesPersonMode.value === "split"
+			? Number(splitAllocations.reduce((sum, row) => sum + row.commission_amount, 0).toFixed(2))
+			: commissionAmount.value,
+		posa_sales_person_allocations: itemSalesPersonMode.value === "split"
+			? JSON.stringify(splitAllocations)
+			: "",
 		discount_percentage:
 			discountType.value === "percentage" ? discountValue.value : 0,
 		discount_amount:

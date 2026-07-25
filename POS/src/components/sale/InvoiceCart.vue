@@ -496,12 +496,12 @@
 								v-if="settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode"
 								:class="[
 									'mb-1 inline-flex w-fit items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold',
-									item.posa_sales_person
+									getItemSalesPersonLabel(item) !== __('Assign sales person')
 										? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
 										: 'bg-yellow-50 text-yellow-700 border border-yellow-200'
 								]"
 							>
-								{{ item.posa_sales_person ? (item.posa_sales_person_name || item.posa_sales_person) : __('Assign sales person') }}
+								{{ getItemSalesPersonLabel(item) }}
 								<span v-if="item.posa_commission_rate" class="ms-1">{{ Number(item.posa_commission_rate).toFixed(2) }}%</span>
 							</div>
 
@@ -1232,6 +1232,29 @@ function getInitials(name) {
  */
 function formatCurrency(amount) {
 	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency)
+}
+
+function getItemSalesPersonAllocations(item) {
+	if (!item?.posa_sales_person_allocations) return []
+	try {
+		const allocations = JSON.parse(item.posa_sales_person_allocations)
+		return Array.isArray(allocations) ? allocations.filter((row) => row.sales_person) : []
+	} catch {
+		return []
+	}
+}
+
+function getItemSalesPersonLabel(item) {
+	const allocations = getItemSalesPersonAllocations(item)
+	if (allocations.length > 1) {
+		return __('Split: {0} sales persons', [allocations.length])
+	}
+	if (allocations.length === 1) {
+		return allocations[0].sales_person_name || allocations[0].sales_person
+	}
+	return item.posa_sales_person
+		? (item.posa_sales_person_name || item.posa_sales_person)
+		: __('Assign sales person')
 }
 
 function getDisplayRate(item) {

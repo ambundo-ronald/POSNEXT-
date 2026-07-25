@@ -220,6 +220,7 @@ export function useInvoice() {
 				posa_sales_person_name: item.posa_sales_person_name || "",
 				posa_commission_rate: Number.parseFloat(item.posa_commission_rate || 0) || 0,
 				posa_commission_amount: 0,
+				posa_sales_person_allocations: item.posa_sales_person_allocations || "",
 			}
 			invoiceItems.value.push(newItem)
 			// Recalculate the newly added item to apply taxes
@@ -592,6 +593,40 @@ export function useInvoice() {
 		item.posa_commission_amount = commissionRate > 0
 			? Number(((netAmount || 0) * commissionRate / 100).toFixed(2))
 			: 0
+		recalculateItemSalesPersonAllocations(item, netAmount || 0)
+	}
+
+	function recalculateItemSalesPersonAllocations(item, netAmount) {
+		if (!item.posa_sales_person_allocations) return
+		let allocations = []
+		try {
+			allocations = JSON.parse(item.posa_sales_person_allocations)
+		} catch {
+			allocations = []
+		}
+		if (!Array.isArray(allocations) || !allocations.length) return
+
+		const rate = Number.parseFloat(item.posa_commission_rate || 0) || 0
+		let allocatedAmount = 0
+		const normalized = allocations.map((row, index) => {
+			const percentage = Number.parseFloat(row.allocated_percentage || 0) || 0
+			let allocated = Number((netAmount * percentage / 100).toFixed(2))
+			if (index === allocations.length - 1) {
+				allocated = Number((netAmount - allocatedAmount).toFixed(2))
+			}
+			allocatedAmount += allocated
+			return {
+				...row,
+				allocated_percentage: percentage,
+				allocated_amount: allocated,
+				commission_rate: rate,
+				commission_amount: Number((allocated * rate / 100).toFixed(2)),
+			}
+		})
+		item.posa_sales_person_allocations = JSON.stringify(normalized)
+		item.posa_commission_amount = Number(
+			normalized.reduce((sum, row) => sum + (Number.parseFloat(row.commission_amount || 0) || 0), 0).toFixed(2),
+		)
 	}
 
 	function addPayment(payment) {
@@ -696,6 +731,7 @@ export function useInvoice() {
 				posa_sales_person: item.posa_sales_person || "",
 				posa_commission_rate: item.posa_commission_rate || 0,
 				posa_commission_amount: item.posa_commission_amount || 0,
+				posa_sales_person_allocations: item.posa_sales_person_allocations || "",
 			})),
 			payments: rawPayments.map((p) => ({
 				mode_of_payment: p.mode_of_payment,
@@ -762,6 +798,10 @@ export function useInvoice() {
 					conversion_factor: item.conversion_factor || 1,
 					discount_percentage: item.discount_percentage || 0,
 					discount_amount: item.discount_amount || 0,
+					posa_sales_person: item.posa_sales_person || "",
+					posa_commission_rate: item.posa_commission_rate || 0,
+					posa_commission_amount: item.posa_commission_amount || 0,
+					posa_sales_person_allocations: item.posa_sales_person_allocations || "",
 				})),
 				payments: inlinePayments.map((p) => ({
 					mode_of_payment: p.mode_of_payment,

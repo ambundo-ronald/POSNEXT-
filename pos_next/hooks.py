@@ -104,6 +104,7 @@ fixtures = [
 					"Sales Invoice Item-posa_sales_person",
 					"Sales Invoice Item-posa_commission_rate",
 					"Sales Invoice Item-posa_commission_amount",
+					"Sales Invoice Item-posa_sales_person_allocations",
 					"POS Profile-posa_cash_mode_of_payment",
 					"POS Profile-posa_enable_customer_group_price_lists",
 					"POS Profile-posa_customer_group_price_lists",
