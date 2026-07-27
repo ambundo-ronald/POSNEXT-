@@ -265,7 +265,7 @@ const selectedSalesPerson = ref("")
 
 const hasReport = computed(() => Boolean(report.value))
 const summary = computed(() => report.value?.summary || {})
-const canViewCashFigures = computed(() => report.value ? report.value.cash_figures_visible !== false : false)
+const canViewCashFigures = computed(() => report.value?.cash_figures_visible === true)
 const paymentMethods = computed(() => canViewCashFigures.value ? report.value?.payment_methods || [] : [])
 const salesPersons = computed(() => report.value?.sales_persons || [])
 const topItems = computed(() => report.value?.top_items || [])
