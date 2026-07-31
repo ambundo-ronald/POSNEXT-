@@ -385,7 +385,7 @@ def _find_payment_entry_for_sms(invoice, transaction_id=None, amount=None):
 def _create_sms_payment_entry(payment, invoice_doc, allocated_amount, mode_of_payment):
 	from pos_next.api.partial_payments import _resolve_payment_account
 
-	total_amount, _, _ = _get_sms_payment_amounts(payment)
+	total_amount, _allocated_amount, _available_amount = _get_sms_payment_amounts(payment)
 	posting_date = max(
 		getdate(payment.received_at) if payment.received_at else getdate(nowdate()),
 		getdate(invoice_doc.posting_date),

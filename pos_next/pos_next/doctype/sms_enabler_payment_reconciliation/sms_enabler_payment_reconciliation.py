@@ -246,7 +246,7 @@ def process_sms_enabler_reconciliation(invoice_names, sms_payment_names):
 				)
 			)
 
-		_, _, amount_to_allocate = _get_sms_payment_amounts(sms_payment)
+		_total_amount, _allocated_amount, amount_to_allocate = _get_sms_payment_amounts(sms_payment)
 		if amount_to_allocate <= AMOUNT_TOLERANCE:
 			continue
 
