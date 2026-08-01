@@ -38,6 +38,7 @@ def get_initial_data():
 	result = {
 		"success": True,
 		"locale": get_user_language(),
+		"pos_access": get_pos_access(),
 		"shift": None,
 		"pos_profile": None,
 		"pos_settings": None,
@@ -67,6 +68,19 @@ def get_initial_data():
 		result["payment_methods"] = get_payment_methods(pos_profile_name)
 
 	return result
+
+
+def get_pos_access():
+	"""Return POS UI access flags for the current user."""
+	roles = set(frappe.get_roles(frappe.session.user) or [])
+	can_manage_settings = "System Manager" in roles
+	can_view_reports = bool(
+		roles.intersection({"Reports Manager", "Sales Manager", "System Manager"})
+	)
+	return {
+		"can_view_reports_dashboard": can_view_reports,
+		"can_manage_settings": can_manage_settings,
+	}
 
 
 def get_user_language():

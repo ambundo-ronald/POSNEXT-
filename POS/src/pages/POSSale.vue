@@ -756,6 +756,7 @@ import { call } from "@/utils/apiWrapper"
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 import { useToast } from "@/composables/useToast"
 
+import { useBootstrapStore } from "@/stores/bootstrap"
 import { useItemSearchStore } from "@/stores/itemSearch"
 import { useStockStore } from "@/stores/stock"
 // Pinia Stores
@@ -776,6 +777,7 @@ const draftsStore = usePOSDraftsStore()
 const posSettingsStore = usePOSSettingsStore()
 const itemStore = useItemSearchStore()
 const stockStore = useStockStore()
+const bootstrapStore = useBootstrapStore()
 // Note: settingsStore is an alias to posSettingsStore (same Pinia store singleton)
 const settingsStore = posSettingsStore
 
@@ -2519,13 +2521,43 @@ function restoreBodyStyles() {
 	bodyStyleSnapshot = null
 }
 
+function showRestrictedAccess() {
+	showWarning(__("Restricted, contact Admin"))
+}
+
+async function getPOSAccess() {
+	let data = bootstrapStore.data
+	if (!data?.pos_access && !bootstrapStore.loading) {
+		data = await bootstrapStore.loadInitialData()
+	}
+	return data?.pos_access || {}
+}
+
+async function canOpenReportsDashboard() {
+	const access = await getPOSAccess()
+	return access.can_view_reports_dashboard === true
+}
+
+async function canOpenPOSSettings() {
+	const access = await getPOSAccess()
+	return access.can_manage_settings === true
+}
+
 // Management and Promotion handlers
-function handleManagementMenuClick(menuItem) {
+async function handleManagementMenuClick(menuItem) {
 	if (menuItem === "dashboard") {
+		if (!(await canOpenReportsDashboard())) {
+			showRestrictedAccess()
+			return
+		}
 		showDashboard.value = true
 	} else if (menuItem === "promotions") {
 		showPromotionManagement.value = true
 	} else if (menuItem === "settings") {
+		if (!(await canOpenPOSSettings())) {
+			showRestrictedAccess()
+			return
+		}
 		showPOSSettings.value = true
 	} else if (menuItem === "invoices") {
 		// Load invoice history data before showing
@@ -2537,6 +2569,10 @@ function handleManagementMenuClick(menuItem) {
 		// Open Stock Lookup dialog in search mode
 		showStockLookup.value = true
 	} else if (menuItem === "reports") {
+		if (!(await canOpenReportsDashboard())) {
+			showRestrictedAccess()
+			return
+		}
 		showReports.value = true
 	}
 }

@@ -111,6 +111,18 @@ export const useBootstrapStore = defineStore("bootstrap", () => {
 		return data.value?.payment_methods || []
 	}
 
+	function getPOSAccess() {
+		return data.value?.pos_access || {}
+	}
+
+	function canViewReportsDashboard() {
+		return getPOSAccess().can_view_reports_dashboard === true
+	}
+
+	function canManagePOSSettings() {
+		return getPOSAccess().can_manage_settings === true
+	}
+
 	/**
 	 * Check if bootstrap data is available
 	 */
@@ -142,6 +154,9 @@ export const useBootstrapStore = defineStore("bootstrap", () => {
 		getPreloadedPOSProfile,
 		getPreloadedPOSSettings,
 		getPreloadedPaymentMethods,
+		getPOSAccess,
+		canViewReportsDashboard,
+		canManagePOSSettings,
 		hasBootstrapData,
 		reset,
 	}

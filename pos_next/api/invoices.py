@@ -1475,10 +1475,18 @@ def get_invoices(pos_profile, limit=100):
 
 	return invoices
 
-def can_view_cash_report_figures():
-	"""Only managers should see cash and payment collection figures in POS reports."""
+POS_REPORT_ROLES = {"Reports Manager", "Sales Manager", "System Manager"}
+
+
+def can_view_pos_reports():
+	"""Return true when the current user can open POS dashboard/reports."""
 	roles = set(frappe.get_roles(frappe.session.user) or [])
-	return bool(roles.intersection({"Sales Manager", "System Manager"}))
+	return bool(roles.intersection(POS_REPORT_ROLES))
+
+
+def can_view_cash_report_figures():
+	"""Only report managers should see cash and payment collection figures in POS reports."""
+	return can_view_pos_reports()
 
 
 
@@ -1867,6 +1875,9 @@ def get_sales_report(
 	sales_person=None,
 ):
 	"""Return POS sales report metrics for the selected profile and date range."""
+	if not can_view_pos_reports():
+		frappe.throw(_("Restricted, contact Admin"), frappe.PermissionError)
+
 	from_date, to_date = _validate_sales_report_access(
 		pos_profile,
 		from_date,

@@ -432,14 +432,8 @@ def update_pos_settings(pos_profile, settings):
 	if isinstance(settings, str):
 		settings = json.loads(settings)
 
-	# Check if user has access to this POS Profile
-	has_access = frappe.db.exists(
-		"POS Profile User",
-		{"parent": pos_profile, "user": frappe.session.user}
-	)
-
-	if not has_access and not frappe.has_permission("POS Settings", "write"):
-		frappe.throw(_("You don't have permission to update this POS Profile"))
+	if "System Manager" not in set(frappe.get_roles(frappe.session.user) or []):
+		frappe.throw(_("Restricted, contact Admin"), frappe.PermissionError)
 
 	global_settings = get_global_sms_enabler_settings()
 	requested_global_enabled = cint(

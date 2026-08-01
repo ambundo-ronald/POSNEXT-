@@ -100,6 +100,48 @@ def install_fixtures(quiet=False):
 				message=frappe.get_traceback()
 			)
 
+	# Install role fixture
+	role_file = os.path.join(fixtures_path, "role.json")
+	if os.path.exists(role_file):
+		try:
+			with open(role_file, 'r') as f:
+				roles = json.load(f)
+
+			for role in roles:
+				install_role(role, quiet=quiet)
+
+			if not quiet:
+				log_message("Installed roles successfully", level="success")
+		except Exception as e:
+			log_message(f"Error installing roles: {str(e)}", level="error")
+			frappe.log_error(
+				title="Role Installation Error",
+				message=frappe.get_traceback()
+			)
+
+
+def install_role(doc_dict, quiet=False):
+	"""Install or update a Role fixture."""
+	try:
+		role_name = doc_dict.get("role_name") or doc_dict.get("name")
+		if not role_name:
+			return
+
+		if frappe.db.exists("Role", role_name):
+			doc = frappe.get_doc("Role", role_name)
+			doc.update(doc_dict)
+			doc.save(ignore_permissions=True)
+		else:
+			doc = frappe.get_doc(doc_dict)
+			doc.insert(ignore_permissions=True)
+
+		if not quiet:
+			log_message(f"Role {role_name} installed/updated", level="success")
+	except Exception as e:
+		if not quiet:
+			log_message(f"Error installing role {doc_dict.get('name')}: {str(e)}", level="error")
+		raise
+
 
 def install_print_format(doc_dict, quiet=False):
 	"""

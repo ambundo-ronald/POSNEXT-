@@ -120,6 +120,18 @@ fixtures = [
 		]
 	},
 	{
+		"dt": "Role",
+		"filters": [
+			[
+				"name",
+				"in",
+				[
+					"Reports Manager"
+				]
+			]
+		]
+	},
+	{
 		"dt": "Print Format",
 		"filters": [
 			[
