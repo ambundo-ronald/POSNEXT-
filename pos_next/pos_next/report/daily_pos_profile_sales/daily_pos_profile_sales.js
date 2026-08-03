@@ -20,5 +20,11 @@ frappe.query_reports["Daily POS Profile Sales"] = {
 			fieldtype: "Link",
 			options: "POS Profile",
 		},
+		{
+			fieldname: "item_group",
+			label: __("Item Group"),
+			fieldtype: "Link",
+			options: "Item Group",
+		},
 	],
 }
