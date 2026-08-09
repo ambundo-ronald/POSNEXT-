@@ -33,6 +33,62 @@ ITEM_RESULT_FIELDS = [
 ITEM_RESULT_COLUMNS = ",\n\t".join(ITEM_RESULT_FIELDS)
 
 
+def _get_item_tax_template_map(item_codes, company=None):
+	"""Return each item's Item Tax Template and summed tax rate for POS display/calculation."""
+	if not item_codes:
+		return {}
+
+	try:
+		rows = frappe.db.sql(
+			"""
+			SELECT
+				item_tax.parent AS item_code,
+				item_tax.item_tax_template,
+				item_tax_template.company
+			FROM `tabItem Tax` item_tax
+			LEFT JOIN `tabItem Tax Template` item_tax_template
+				ON item_tax_template.name = item_tax.item_tax_template
+			WHERE item_tax.parent IN %s
+				AND IFNULL(item_tax.item_tax_template, '') != ''
+				AND (%s IS NULL OR IFNULL(item_tax_template.company, '') IN (%s, ''))
+			ORDER BY item_tax.parent, item_tax.idx
+			""",
+			[item_codes, company, company],
+			as_dict=True,
+		)
+		if not rows:
+			return {}
+
+		item_tax_templates = {}
+		for row in rows:
+			# Keep the first matching template for each item, respecting Item Tax row order.
+			item_tax_templates.setdefault(row.item_code, row.item_tax_template)
+
+		template_names = list(set(item_tax_templates.values()))
+		tax_rows = frappe.db.sql(
+			"""
+			SELECT parent, COALESCE(SUM(tax_rate), 0) AS tax_rate
+			FROM `tabItem Tax Template Detail`
+			WHERE parent IN %s
+			GROUP BY parent
+			""",
+			[template_names],
+			as_dict=True,
+		)
+		template_rates = {row.parent: flt(row.tax_rate) for row in tax_rows}
+
+		return {
+			item_code: {
+				"item_tax_template": template,
+				"item_tax_rate": flt(template_rates.get(template, 0)),
+			}
+			for item_code, template in item_tax_templates.items()
+		}
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "POS Item Tax Template Lookup Error")
+		return {}
+
+
 def get_stock_availability(item_code, warehouse):
 	"""Return total available quantity for an item in the given warehouse."""
 	if not warehouse:
@@ -596,6 +652,8 @@ def get_item_variants(template_item, pos_profile, customer=None, customer_group=
 			)
 			stock_map = {s["item_code"]: s["actual_qty"] for s in stocks}
 
+		item_tax_map = _get_item_tax_template_map(variant_codes, pos_profile_doc.company)
+
 		# Enrich each variant with attributes, price, stock, and UOMs
 		for variant in variants:
 			# Get variant attributes from preloaded map
@@ -621,6 +679,10 @@ def get_item_variants(template_item, pos_profile, customer=None, customer_group=
 
 			# Add UOM-specific prices
 			variant["uom_prices"] = uom_prices_map.get(variant["item_code"], {})
+
+			tax_info = item_tax_map.get(variant["item_code"], {})
+			variant["item_tax_template"] = tax_info.get("item_tax_template")
+			variant["item_tax_rate"] = flt(tax_info.get("item_tax_rate") or 0)
 
 		return variants
 	except Exception as e:
@@ -1151,6 +1213,8 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 					"Bundle Availability Warning"
 				)
 
+		item_tax_map = _get_item_tax_template_map(item_codes, pos_profile_doc.company)
+
 		# Enrich items with price, stock, barcode, and UOM data
 		for item in items:
 			stock_uom = item.get("stock_uom")
@@ -1220,6 +1284,10 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 			item["price_uom"] = display_uom
 			item["conversion_factor"] = 1
 			item["price_list_rate_price_uom"] = display_rate
+
+			tax_info = item_tax_map.get(item["item_code"], {})
+			item["item_tax_template"] = tax_info.get("item_tax_template")
+			item["item_tax_rate"] = flt(tax_info.get("item_tax_rate") or 0)
 
 			# ===================================================================
 			# STOCK QUANTITY ASSIGNMENT: Stock Items vs Product Bundles
@@ -1336,6 +1404,9 @@ def get_item_details(item_code, pos_profile, customer=None, customer_group=None,
 			company=pos_profile_doc.company,
 		)
 		details["posa_commission_rate"] = flt(item_doc.get("posa_commission_rate") or 0)
+		tax_info = _get_item_tax_template_map([item_code], pos_profile_doc.company).get(item_code, {})
+		details["item_tax_template"] = tax_info.get("item_tax_template")
+		details["item_tax_rate"] = flt(tax_info.get("item_tax_rate") or 0)
 		return details
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "Get Item Details Error")

@@ -725,7 +725,6 @@
 import LazyImage from "@/components/common/LazyImage.vue"
 import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailabilityDialog.vue"
 import { useItemSearchStore } from "@/stores/itemSearch"
-import { usePOSCartStore } from "@/stores/posCart"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { useStock } from "@/composables/useStock"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
@@ -768,7 +767,6 @@ const emit = defineEmits(["item-selected", "price-list-changed"])
 // Use composables
 const { getStockStatus } = useStock()
 const settingsStore = usePOSSettingsStore()
-const cartStore = usePOSCartStore()
 const { showError, showWarning } = useToast()
 
 // Use Pinia store
@@ -1275,24 +1273,8 @@ function toggleAutoAdd() {
 function formatCurrency(amount) {
 	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency)
 }
-const totalTaxRate = computed(() => {
-	return (cartStore.taxRules || []).reduce((sum, taxRule) => {
-		if (
-			taxRule.charge_type === "On Net Total" ||
-			taxRule.charge_type === "On Previous Row Total"
-		) {
-			return sum + (Number.parseFloat(taxRule.rate || 0) || 0)
-		}
-		return sum
-	}, 0)
-})
-
 function getDisplayRate(item) {
-	const rate = Number.parseFloat(item?.rate || item?.price_list_rate || 0) || 0
-	if (!cartStore.taxInclusive || totalTaxRate.value <= 0) {
-		return rate
-	}
-	return rate * (1 + totalTaxRate.value / 100)
+	return Number.parseFloat(item?.rate || item?.price_list_rate || 0) || 0
 }
 // Show warehouse availability dialog
 function showWarehouseAvailability(item) {

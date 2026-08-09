@@ -2079,6 +2079,8 @@ async function handleOptionSelected(option) {
 				conversion_factor: option.conversion_factor,
 				rate: itemDetails.price_list_rate || itemDetails.rate,
 				price_list_rate: itemDetails.price_list_rate,
+				item_tax_template: itemDetails.item_tax_template || cartStore.pendingItem.item_tax_template || null,
+				item_tax_rate: Number.parseFloat(itemDetails.item_tax_rate ?? cartStore.pendingItem.item_tax_rate ?? 0) || 0,
 			}
 
 			if (itemToAdd.has_batch_no || itemToAdd.has_serial_no) {

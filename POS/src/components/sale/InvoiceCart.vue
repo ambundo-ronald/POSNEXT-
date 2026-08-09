@@ -1258,13 +1258,21 @@ const totalTaxRate = computed(() => {
 	}, 0)
 })
 
+function getItemTaxRate(item) {
+	if (item?.item_tax_template) {
+		return Number.parseFloat(item.item_tax_rate || 0) || 0
+	}
+	return totalTaxRate.value
+}
+
 function getDisplayRate(item) {
 	const priceListRate = Number.parseFloat(item.price_list_rate || item.rate || 0)
 	const rate = Number.parseFloat(item.rate || priceListRate || 0)
-	if (!isTaxInclusive.value || totalTaxRate.value <= 0) {
+	if (!isTaxInclusive.value) {
 		return rate
 	}
-	return rate * (1 + totalTaxRate.value / 100)
+	const taxRate = getItemTaxRate(item)
+	return taxRate > 0 ? rate / (1 + taxRate / 100) : rate
 }
 
 function getDisplayAmount(item) {

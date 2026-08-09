@@ -152,6 +152,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				item.item_uoms = itemDetails.item_uoms || item.item_uoms || []
 				item.uom_prices = itemDetails.uom_prices || item.uom_prices || {}
 				item.warehouse = itemDetails.warehouse || item.warehouse
+				item.item_tax_template = itemDetails.item_tax_template || item.item_tax_template || null
+				item.item_tax_rate = Number.parseFloat(itemDetails.item_tax_rate ?? item.item_tax_rate ?? 0) || 0
 
 				recalculateItem(item)
 			}),
@@ -647,6 +649,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				uomData?.conversion_factor || itemDetails.conversion_factor || 1
 			cartItem.rate = itemDetails.price_list_rate || itemDetails.rate
 			cartItem.price_list_rate = itemDetails.price_list_rate
+			cartItem.item_tax_template = itemDetails.item_tax_template || cartItem.item_tax_template || null
+			cartItem.item_tax_rate = Number.parseFloat(itemDetails.item_tax_rate ?? cartItem.item_tax_rate ?? 0) || 0
 
 			const duplicateIndex = invoiceItems.value.findIndex(
 				(i, index) =>
@@ -708,6 +712,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 						uomData?.conversion_factor || itemDetails.conversion_factor || 1
 					cartItem.rate = itemDetails.price_list_rate || itemDetails.rate
 					cartItem.price_list_rate = itemDetails.price_list_rate
+					cartItem.item_tax_template = itemDetails.item_tax_template || cartItem.item_tax_template || null
+					cartItem.item_tax_rate = Number.parseFloat(itemDetails.item_tax_rate ?? cartItem.item_tax_rate ?? 0) || 0
 				} catch (error) {
 					console.warn(
 						"Failed to fetch UOM details, using provided rate:",
@@ -752,6 +758,12 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			}
 			if (updatedDetails.posa_sales_person_allocations !== undefined) {
 				cartItem.posa_sales_person_allocations = updatedDetails.posa_sales_person_allocations || ""
+			}
+			if (updatedDetails.item_tax_template !== undefined) {
+				cartItem.item_tax_template = updatedDetails.item_tax_template || null
+			}
+			if (updatedDetails.item_tax_rate !== undefined) {
+				cartItem.item_tax_rate = Number.parseFloat(updatedDetails.item_tax_rate || 0) || 0
 			}
 			// Update price_list_rate if provided (for UOM changes). Manual rate
 			// edits set price_list_rate above so recalculateItem preserves them.

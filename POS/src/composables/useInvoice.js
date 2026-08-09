@@ -216,6 +216,8 @@ export function useInvoice() {
 				// Add item_group and brand for offer eligibility checking
 				item_group: item.item_group,
 				brand: item.brand,
+				item_tax_template: item.item_tax_template || null,
+				item_tax_rate: Number.parseFloat(item.item_tax_rate || 0) || 0,
 				posa_sales_person: item.posa_sales_person || "",
 				posa_sales_person_name: item.posa_sales_person_name || "",
 				posa_commission_rate: Number.parseFloat(item.posa_commission_rate || 0) || 0,
@@ -503,6 +505,13 @@ export function useInvoice() {
 		return totalRate
 	}
 
+	function getItemTaxRate(item) {
+		if (item?.item_tax_template) {
+			return Number.parseFloat(item.item_tax_rate || 0) || 0
+		}
+		return calculateTotalTaxRate()
+	}
+
 	function rebuildIncrementalCache() {
 		/**
 		 * Rebuild cache from scratch - used when bulk operations modify all items
@@ -569,7 +578,7 @@ export function useInvoice() {
 		item.discount_amount = discountAmount
 
 		// Calculate tax based on inclusive/exclusive mode
-		const totalTaxRate = calculateTotalTaxRate()
+		const totalTaxRate = getItemTaxRate(item)
 		let netAmount = 0
 		let taxAmount = 0
 
@@ -728,6 +737,7 @@ export function useInvoice() {
 				conversion_factor: item.conversion_factor || 1,
 				discount_percentage: item.discount_percentage || 0,
 				discount_amount: item.discount_amount || 0,
+				item_tax_template: item.item_tax_template || undefined,
 				posa_sales_person: item.posa_sales_person || "",
 				posa_commission_rate: item.posa_commission_rate || 0,
 				posa_commission_amount: item.posa_commission_amount || 0,
@@ -798,6 +808,7 @@ export function useInvoice() {
 					conversion_factor: item.conversion_factor || 1,
 					discount_percentage: item.discount_percentage || 0,
 					discount_amount: item.discount_amount || 0,
+					item_tax_template: item.item_tax_template || undefined,
 					posa_sales_person: item.posa_sales_person || "",
 					posa_commission_rate: item.posa_commission_rate || 0,
 					posa_commission_amount: item.posa_commission_amount || 0,
