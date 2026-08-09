@@ -395,7 +395,7 @@
 								{{ item.item_name }}
 							</h3>
 							<p class="text-[9px] sm:text-[10px] text-gray-500 leading-tight">
-									<span class="font-semibold text-blue-600">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
+									<span class="font-semibold text-blue-600">{{ formatCurrency(getDisplayRate(item)) }}</span>
 									<span class="text-gray-400">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
 							</p>
 						</div>
@@ -565,7 +565,7 @@
 								<div class="text-xs sm:text-sm text-gray-500 truncate" :title="item.item_code">{{ item.item_code }}</div>
 							</td>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]">
-								<div class="text-xs sm:text-sm font-semibold text-blue-600">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</div>
+								<div class="text-xs sm:text-sm font-semibold text-blue-600">{{ formatCurrency(getDisplayRate(item)) }}</div>
 							</td>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]">
 								<!-- Stock Badge - Click to view warehouse availability -->
@@ -725,6 +725,7 @@
 import LazyImage from "@/components/common/LazyImage.vue"
 import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailabilityDialog.vue"
 import { useItemSearchStore } from "@/stores/itemSearch"
+import { usePOSCartStore } from "@/stores/posCart"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { useStock } from "@/composables/useStock"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
@@ -767,6 +768,7 @@ const emit = defineEmits(["item-selected", "price-list-changed"])
 // Use composables
 const { getStockStatus } = useStock()
 const settingsStore = usePOSSettingsStore()
+const cartStore = usePOSCartStore()
 const { showError, showWarning } = useToast()
 
 // Use Pinia store
@@ -1273,7 +1275,25 @@ function toggleAutoAdd() {
 function formatCurrency(amount) {
 	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency)
 }
+const totalTaxRate = computed(() => {
+	return (cartStore.taxRules || []).reduce((sum, taxRule) => {
+		if (
+			taxRule.charge_type === "On Net Total" ||
+			taxRule.charge_type === "On Previous Row Total"
+		) {
+			return sum + (Number.parseFloat(taxRule.rate || 0) || 0)
+		}
+		return sum
+	}, 0)
+})
 
+function getDisplayRate(item) {
+	const rate = Number.parseFloat(item?.rate || item?.price_list_rate || 0) || 0
+	if (!cartStore.taxInclusive || totalTaxRate.value <= 0) {
+		return rate
+	}
+	return rate * (1 + totalTaxRate.value / 100)
+}
 // Show warehouse availability dialog
 function showWarehouseAvailability(item) {
 	warehouseDialogItem.value = {

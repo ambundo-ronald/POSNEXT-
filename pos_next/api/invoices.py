@@ -1509,11 +1509,61 @@ def _validate_sales_report_access(pos_profile, from_date=None, to_date=None):
 	return from_date, to_date
 
 
+def _get_item_group_bounds(item_group):
+	item_group = cstr(item_group).strip()
+	if not item_group:
+		return None
+
+	bounds = frappe.db.get_value("Item Group", item_group, ["lft", "rgt"], as_dict=True)
+	if not bounds:
+		frappe.throw(_("Item Group {0} does not exist").format(item_group))
+	return bounds
+
+
+def _get_item_group_exists_condition():
+	return """
+			AND EXISTS (
+				SELECT 1
+				FROM `tabSales Invoice Item` sii_group_filter
+				INNER JOIN `tabItem Group` ig_group_filter
+					ON ig_group_filter.name = sii_group_filter.item_group
+				WHERE sii_group_filter.parent = si.name
+					AND ig_group_filter.lft >= %(item_group_lft)s
+					AND ig_group_filter.rgt <= %(item_group_rgt)s
+			)
+	"""
+
+
+def _get_item_group_ratio_join():
+	return """
+		INNER JOIN (
+			SELECT
+				si_ratio.name AS invoice_id,
+				CASE
+					WHEN ABS(si_ratio.net_total) > 0
+						THEN ABS(COALESCE(SUM(sii_ratio.amount), 0)) / ABS(si_ratio.net_total)
+					ELSE 0
+				END AS item_ratio
+			FROM `tabSales Invoice` si_ratio
+			INNER JOIN `tabSales Invoice Item` sii_ratio ON sii_ratio.parent = si_ratio.name
+			INNER JOIN `tabItem Group` ig_ratio ON ig_ratio.name = sii_ratio.item_group
+			WHERE si_ratio.pos_profile = %(pos_profile)s
+				AND si_ratio.docstatus = 1
+				AND si_ratio.is_pos = 1
+				AND si_ratio.posting_date BETWEEN %(from_date)s AND %(to_date)s
+				AND ig_ratio.lft >= %(item_group_lft)s
+				AND ig_ratio.rgt <= %(item_group_rgt)s
+			GROUP BY si_ratio.name, si_ratio.net_total
+		) item_group_ratio ON item_group_ratio.invoice_id = si.name
+	"""
+
+
 def _get_sales_report_payment_export(
 	pos_profile,
 	from_date,
 	to_date,
 	sales_person=None,
+	item_group=None,
 ):
 	params = {
 		"pos_profile": pos_profile,
@@ -1521,6 +1571,16 @@ def _get_sales_report_payment_export(
 		"to_date": to_date,
 		"sales_person": cstr(sales_person).strip(),
 	}
+	item_group_bounds = _get_item_group_bounds(item_group)
+	item_group_filter = ""
+	item_group_ratio_join = ""
+	amount_multiplier = "1"
+	if item_group_bounds:
+		params["item_group_lft"] = item_group_bounds.lft
+		params["item_group_rgt"] = item_group_bounds.rgt
+		item_group_filter = _get_item_group_exists_condition()
+		item_group_ratio_join = _get_item_group_ratio_join()
+		amount_multiplier = "COALESCE(item_group_ratio.item_ratio, 0)"
 	sales_person_filter = """
 		AND (
 			%(sales_person)s = ''
@@ -1559,6 +1619,7 @@ def _get_sales_report_payment_export(
 			AND si.is_pos = 1
 			AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
 			{sales_person_filter}
+			{item_group_filter}
 		ORDER BY si.posting_date ASC, si.posting_time ASC, si.name ASC
 		""",
 		params,
@@ -1573,20 +1634,22 @@ def _get_sales_report_payment_export(
 			COALESCE(
 				SUM(
 					CASE
-						WHEN si.is_return = 1 THEN -ABS(sip.amount)
-						ELSE sip.amount
+						WHEN si.is_return = 1 THEN -ABS(sip.amount * {amount_multiplier})
+						ELSE sip.amount * {amount_multiplier}
 					END
 				),
 				0
 			) AS amount
 		FROM `tabSales Invoice` si
 		INNER JOIN `tabSales Invoice Payment` sip ON sip.parent = si.name
+		{item_group_ratio_join}
 		WHERE si.pos_profile = %(pos_profile)s
 			AND si.docstatus = 1
 			AND si.is_pos = 1
 			AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
 			AND sip.amount != 0
 			{sales_person_filter}
+			{item_group_filter}
 		GROUP BY si.name, sip.mode_of_payment
 		""",
 		params,
@@ -1601,8 +1664,8 @@ def _get_sales_report_payment_export(
 			COALESCE(
 				SUM(
 					CASE
-						WHEN si.is_return = 1 THEN -ABS(per.allocated_amount)
-						ELSE per.allocated_amount
+						WHEN si.is_return = 1 THEN -ABS(per.allocated_amount * {amount_multiplier})
+						ELSE per.allocated_amount * {amount_multiplier}
 					END
 				),
 				0
@@ -1612,6 +1675,7 @@ def _get_sales_report_payment_export(
 			ON per.reference_doctype = 'Sales Invoice'
 			AND per.reference_name = si.name
 		INNER JOIN `tabPayment Entry` pe ON pe.name = per.parent
+		{item_group_ratio_join}
 		WHERE si.pos_profile = %(pos_profile)s
 			AND si.docstatus = 1
 			AND si.is_pos = 1
@@ -1619,6 +1683,7 @@ def _get_sales_report_payment_export(
 			AND pe.docstatus = 1
 			AND per.allocated_amount != 0
 			{sales_person_filter}
+			{item_group_filter}
 		GROUP BY si.name, pe.mode_of_payment
 		""",
 		params,
@@ -1639,7 +1704,10 @@ def _get_sales_report_payment_export(
 	for invoice in invoices:
 		invoice_payments = dict(payments_by_invoice.get(invoice.name) or {})
 		allocated_amount = flt(sum(invoice_payments.values()))
-		unallocated_amount = flt(invoice.grand_total) - allocated_amount
+		invoice_total = flt(invoice.grand_total)
+		if item_group_bounds:
+			invoice_total = allocated_amount
+		unallocated_amount = invoice_total - allocated_amount
 		if abs(unallocated_amount) > 0.005:
 			mode = (
 				_("Unpaid / Credit")
@@ -1669,6 +1737,7 @@ def _get_sales_report_payment_export(
 	return {
 		"rows": rows,
 		"sales_person": cstr(sales_person).strip(),
+		"item_group": cstr(item_group).strip(),
 		"mode_totals": [
 			{"mode_of_payment": mode, "amount": amount}
 			for mode, amount in sorted(mode_totals.items())
@@ -1689,6 +1758,7 @@ def _build_sales_report_xlsx(report, pos_profile, from_date, to_date, currency):
 			_("Sales Person"),
 			report["sales_person"] or _("All Sales Persons"),
 		],
+		[_("Item Group"), report.get("item_group") or _("All Item Groups")],
 		[_("Currency"), currency],
 		[],
 		[
@@ -1777,6 +1847,7 @@ def _build_sales_report_pdf(report, pos_profile, from_date, to_date, currency):
 			<div>{escape(_("POS Profile"))}: {escape(cstr(pos_profile))}</div>
 			<div>{escape(_("Date Range"))}: {escape(str(from_date))} - {escape(str(to_date))}</div>
 			<div>{escape(_("Sales Person"))}: {escape(report["sales_person"] or _("All Sales Persons"))}</div>
+			<div>{escape(_("Item Group"))}: {escape(report.get("item_group") or _("All Item Groups"))}</div>
 			<div>{escape(_("Invoices"))}: {cint(report["invoice_count"])}</div>
 		</div>
 		<table>
@@ -1813,6 +1884,7 @@ def export_sales_report(
 	to_date=None,
 	file_type="xlsx",
 	sales_person=None,
+	item_group=None,
 ):
 	"""Download a payment-level POS sales report for an accessible profile."""
 	from_date, to_date = _validate_sales_report_access(
@@ -1832,6 +1904,7 @@ def export_sales_report(
 		from_date,
 		to_date,
 		sales_person=sales_person,
+		item_group=item_group,
 	)
 	currency = (
 		frappe.db.get_value("POS Profile", pos_profile, "currency")
@@ -1873,6 +1946,7 @@ def get_sales_report(
 	to_date=None,
 	limit=10,
 	sales_person=None,
+	item_group=None,
 ):
 	"""Return POS sales report metrics for the selected profile and date range."""
 	if not can_view_pos_reports():
@@ -1884,8 +1958,8 @@ def get_sales_report(
 		to_date,
 	)
 	limit = cint(limit) or 10
-
 	cash_figures_visible = can_view_cash_report_figures()
+
 	params = {
 		"pos_profile": pos_profile,
 		"from_date": from_date,
@@ -1893,8 +1967,18 @@ def get_sales_report(
 		"limit": limit,
 		"sales_person": cstr(sales_person).strip(),
 	}
+	item_group_bounds = _get_item_group_bounds(item_group)
+	item_group_filter = ""
+	item_group_ratio_join = ""
+	amount_multiplier = "1"
+	if item_group_bounds:
+		params["item_group_lft"] = item_group_bounds.lft
+		params["item_group_rgt"] = item_group_bounds.rgt
+		item_group_filter = _get_item_group_exists_condition()
+		item_group_ratio_join = _get_item_group_ratio_join()
+		amount_multiplier = "COALESCE(item_group_ratio.item_ratio, 0)"
 
-	filters = """
+	filters = f"""
 		si.pos_profile = %(pos_profile)s
 		AND si.docstatus = 1
 		AND si.is_pos = 1
@@ -1909,6 +1993,7 @@ def get_sales_report(
 					AND sales_team_filter.sales_person = %(sales_person)s
 			)
 		)
+		{item_group_filter}
 	"""
 
 	sales_persons = frappe.db.sql(
@@ -1927,24 +2012,86 @@ def get_sales_report(
 		as_dict=True,
 	)
 
-	summary = frappe.db.sql(
-		f"""
-		SELECT
-			COUNT(*) as invoice_count,
-			SUM(CASE WHEN si.is_return = 0 THEN 1 ELSE 0 END) as sale_count,
-			SUM(CASE WHEN si.is_return = 1 THEN 1 ELSE 0 END) as return_count,
-			COALESCE(SUM(CASE WHEN si.is_return = 0 THEN si.grand_total ELSE 0 END), 0) as gross_sales,
-			COALESCE(SUM(CASE WHEN si.is_return = 1 THEN ABS(si.grand_total) ELSE 0 END), 0) as returns_total,
-			COALESCE(SUM(si.grand_total), 0) as net_sales,
-			COALESCE(SUM(si.paid_amount), 0) as paid_amount,
-			COALESCE(SUM(si.outstanding_amount), 0) as outstanding_amount,
-			COALESCE(SUM(si.discount_amount), 0) as discount_amount
+	item_groups = frappe.db.sql(
+		"""
+		SELECT DISTINCT sii.item_group
 		FROM `tabSales Invoice` si
-		WHERE {filters}
+		INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+		WHERE si.pos_profile = %(pos_profile)s
+			AND si.docstatus = 1
+			AND si.is_pos = 1
+			AND IFNULL(sii.item_group, '') != ''
+		ORDER BY sii.item_group
 		""",
-		params,
+		{"pos_profile": pos_profile},
 		as_dict=True,
-	)[0]
+	)
+
+	if item_group_bounds:
+		summary = frappe.db.sql(
+			f"""
+			SELECT
+				COUNT(filtered.name) as invoice_count,
+				SUM(CASE WHEN filtered.is_return = 0 THEN 1 ELSE 0 END) as sale_count,
+				SUM(CASE WHEN filtered.is_return = 1 THEN 1 ELSE 0 END) as return_count,
+				COALESCE(SUM(CASE WHEN filtered.is_return = 0 THEN filtered.item_amount ELSE 0 END), 0) as gross_sales,
+				COALESCE(SUM(CASE WHEN filtered.is_return = 1 THEN ABS(filtered.item_amount) ELSE 0 END), 0) as returns_total,
+				COALESCE(SUM(filtered.item_amount), 0) as net_sales,
+				COALESCE(SUM(filtered.paid_amount * filtered.item_ratio), 0) as paid_amount,
+				COALESCE(SUM(filtered.outstanding_amount * filtered.item_ratio), 0) as outstanding_amount,
+				COALESCE(SUM(filtered.item_discount_amount), 0) as discount_amount
+			FROM (
+				SELECT
+					si.name,
+					si.is_return,
+					si.paid_amount,
+					si.outstanding_amount,
+					COALESCE(SUM(sii.amount), 0) AS item_amount,
+					COALESCE(SUM(sii.discount_amount), 0) AS item_discount_amount,
+					CASE
+						WHEN ABS(si.net_total) > 0 THEN ABS(COALESCE(SUM(sii.amount), 0)) / ABS(si.net_total)
+						ELSE 0
+					END AS item_ratio
+				FROM `tabSales Invoice` si
+				INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+				INNER JOIN `tabItem Group` ig ON ig.name = sii.item_group
+				WHERE {filters}
+					AND ig.lft >= %(item_group_lft)s
+					AND ig.rgt <= %(item_group_rgt)s
+				GROUP BY si.name, si.is_return, si.paid_amount, si.outstanding_amount, si.net_total
+			) filtered
+			""",
+			params,
+			as_dict=True,
+		)[0]
+	else:
+		summary = frappe.db.sql(
+			f"""
+			SELECT
+				COUNT(*) as invoice_count,
+				SUM(CASE WHEN si.is_return = 0 THEN 1 ELSE 0 END) as sale_count,
+				SUM(CASE WHEN si.is_return = 1 THEN 1 ELSE 0 END) as return_count,
+				COALESCE(SUM(CASE WHEN si.is_return = 0 THEN si.grand_total ELSE 0 END), 0) as gross_sales,
+				COALESCE(SUM(CASE WHEN si.is_return = 1 THEN ABS(si.grand_total) ELSE 0 END), 0) as returns_total,
+				COALESCE(SUM(si.grand_total), 0) as net_sales,
+				COALESCE(SUM(si.paid_amount), 0) as paid_amount,
+				COALESCE(SUM(si.outstanding_amount), 0) as outstanding_amount,
+				COALESCE(SUM(si.discount_amount), 0) as discount_amount
+			FROM `tabSales Invoice` si
+			WHERE {filters}
+			""",
+			params,
+			as_dict=True,
+		)[0]
+
+	item_group_item_filter = ""
+	item_group_item_join = ""
+	if item_group_bounds:
+		item_group_item_join = "INNER JOIN `tabItem Group` ig ON ig.name = sii.item_group"
+		item_group_item_filter = """
+			AND ig.lft >= %(item_group_lft)s
+			AND ig.rgt <= %(item_group_rgt)s
+		"""
 
 	items_summary = frappe.db.sql(
 		f"""
@@ -1953,8 +2100,10 @@ def get_sales_report(
 			COALESCE(SUM(sii.amount), 0) as amount
 		FROM `tabSales Invoice` si
 		INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+		{item_group_item_join}
 		WHERE {filters}
 			AND si.is_return = 0
+			{item_group_item_filter}
 		""",
 		params,
 		as_dict=True,
@@ -1970,8 +2119,10 @@ def get_sales_report(
 			COUNT(DISTINCT si.name) as invoice_count
 		FROM `tabSales Invoice` si
 		INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
+		{item_group_item_join}
 		WHERE {filters}
 			AND si.is_return = 0
+			{item_group_item_filter}
 		GROUP BY sii.item_code
 		ORDER BY amount DESC
 		LIMIT %(limit)s
@@ -1984,10 +2135,11 @@ def get_sales_report(
 		f"""
 		SELECT
 			sip.mode_of_payment,
-			COALESCE(SUM(sip.amount), 0) as amount,
+			COALESCE(SUM(sip.amount * {amount_multiplier}), 0) as amount,
 			COUNT(*) as count
 		FROM `tabSales Invoice` si
 		INNER JOIN `tabSales Invoice Payment` sip ON sip.parent = si.name
+		{item_group_ratio_join}
 		WHERE {filters}
 			AND sip.amount != 0
 		GROUP BY sip.mode_of_payment
@@ -2000,15 +2152,17 @@ def get_sales_report(
 		f"""
 		SELECT
 			pe.mode_of_payment,
-			COALESCE(SUM(per.allocated_amount), 0) as amount,
+			COALESCE(SUM(per.allocated_amount * {amount_multiplier}), 0) as amount,
 			COUNT(DISTINCT pe.name) as count
 		FROM `tabSales Invoice` si
 		INNER JOIN `tabPayment Entry Reference` per
 			ON per.reference_doctype = 'Sales Invoice'
 			AND per.reference_name = si.name
 		INNER JOIN `tabPayment Entry` pe ON pe.name = per.parent
+		{item_group_ratio_join}
 		WHERE {filters}
 			AND pe.docstatus = 1
+			AND per.allocated_amount != 0
 		GROUP BY pe.mode_of_payment
 		""",
 		params,
@@ -2090,6 +2244,9 @@ def get_sales_report(
 		"payment_methods": payment_methods,
 		"sales_persons": [
 			row.sales_person for row in sales_persons if row.sales_person
+		],
+		"item_groups": [
+			row.item_group for row in item_groups if row.item_group
 		],
 		"top_items": top_items,
 		"recent_invoices": recent_invoices,

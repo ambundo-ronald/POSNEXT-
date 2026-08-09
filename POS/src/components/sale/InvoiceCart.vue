@@ -1072,17 +1072,6 @@ const totalQuantity = computed(() => {
 
 const isTaxInclusive = computed(() => Boolean(cartStore.taxInclusive))
 
-const inclusiveTaxMultiplier = computed(() => {
-	if (!isTaxInclusive.value) {
-		return 1
-	}
-
-	const grossSubtotal = Number.parseFloat(props.subtotal || 0)
-	const taxAmount = Number.parseFloat(props.taxAmount || 0)
-	const netSubtotal = grossSubtotal - taxAmount
-
-	return netSubtotal > 0 ? grossSubtotal / netSubtotal : 1
-})
 
 const displaySubtotal = computed(() => {
 	if (!isTaxInclusive.value) {
@@ -1257,14 +1246,25 @@ function getItemSalesPersonLabel(item) {
 		: __('Assign sales person')
 }
 
+const totalTaxRate = computed(() => {
+	return (cartStore.taxRules || []).reduce((sum, taxRule) => {
+		if (
+			taxRule.charge_type === "On Net Total" ||
+			taxRule.charge_type === "On Previous Row Total"
+		) {
+			return sum + (Number.parseFloat(taxRule.rate || 0) || 0)
+		}
+		return sum
+	}, 0)
+})
+
 function getDisplayRate(item) {
 	const priceListRate = Number.parseFloat(item.price_list_rate || item.rate || 0)
-
-	if (!isTaxInclusive.value) {
-		return Number.parseFloat(item.rate || priceListRate || 0)
+	const rate = Number.parseFloat(item.rate || priceListRate || 0)
+	if (!isTaxInclusive.value || totalTaxRate.value <= 0) {
+		return rate
 	}
-
-	return priceListRate / inclusiveTaxMultiplier.value
+	return rate * (1 + totalTaxRate.value / 100)
 }
 
 function getDisplayAmount(item) {

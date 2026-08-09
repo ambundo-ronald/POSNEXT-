@@ -51,6 +51,22 @@
 									</option>
 								</select>
 							</label>
+							<label class="flex flex-col gap-1">
+								<span class="text-xs font-medium text-gray-600">{{ __("Item Group") }}</span>
+								<select
+									v-model="selectedItemGroup"
+									class="h-9 min-w-44 rounded-md border border-gray-300 bg-white px-3 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+								>
+									<option value="">{{ __("All Item Groups") }}</option>
+									<option
+										v-for="itemGroup in itemGroups"
+										:key="itemGroup"
+										:value="itemGroup"
+									>
+										{{ itemGroup }}
+									</option>
+								</select>
+							</label>
 							<Button
 								@click="loadReport"
 								:loading="loading"
@@ -262,12 +278,14 @@ const report = ref(null)
 const fromDate = ref(getToday())
 const toDate = ref(getToday())
 const selectedSalesPerson = ref("")
+const selectedItemGroup = ref("")
 
 const hasReport = computed(() => Boolean(report.value))
 const summary = computed(() => report.value?.summary || {})
 const canViewCashFigures = computed(() => report.value?.cash_figures_visible === true)
 const paymentMethods = computed(() => canViewCashFigures.value ? report.value?.payment_methods || [] : [])
 const salesPersons = computed(() => report.value?.sales_persons || [])
+const itemGroups = computed(() => report.value?.item_groups || [])
 const topItems = computed(() => report.value?.top_items || [])
 const recentInvoices = computed(() => report.value?.recent_invoices || [])
 
@@ -357,6 +375,7 @@ async function loadReport() {
 			from_date: fromDate.value,
 			to_date: toDate.value,
 			sales_person: selectedSalesPerson.value,
+			item_group: selectedItemGroup.value,
 			limit: 10,
 		})
 	} catch (error) {
@@ -390,6 +409,7 @@ async function exportReport(fileType) {
 			to_date: toDate.value,
 			file_type: fileType,
 			sales_person: selectedSalesPerson.value,
+			item_group: selectedItemGroup.value,
 		})
 		const response = await fetch(
 			`/api/method/pos_next.api.invoices.export_sales_report?${params.toString()}`,
