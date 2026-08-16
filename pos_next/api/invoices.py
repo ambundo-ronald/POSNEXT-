@@ -1660,7 +1660,11 @@ def _get_sales_report_payment_export(
 		f"""
 		SELECT
 			si.name AS invoice_id,
+			pe.name AS payment_entry,
 			pe.mode_of_payment,
+			GROUP_CONCAT(DISTINCT sms_reg.name ORDER BY sms_reg.name SEPARATOR ', ') AS sms_payment_register_id,
+			GROUP_CONCAT(DISTINCT sms_reg.transaction_id ORDER BY sms_reg.transaction_id SEPARATOR ', ') AS sms_transaction_id,
+			GROUP_CONCAT(DISTINCT sms_reg.account_reference ORDER BY sms_reg.account_reference SEPARATOR ', ') AS sms_account_reference,
 			COALESCE(
 				SUM(
 					CASE
@@ -1675,6 +1679,16 @@ def _get_sales_report_payment_export(
 			ON per.reference_doctype = 'Sales Invoice'
 			AND per.reference_name = si.name
 		INNER JOIN `tabPayment Entry` pe ON pe.name = per.parent
+		LEFT JOIN (
+			SELECT
+				payment_entry,
+				GROUP_CONCAT(DISTINCT name ORDER BY name SEPARATOR ', ') AS name,
+				GROUP_CONCAT(DISTINCT transaction_id ORDER BY transaction_id SEPARATOR ', ') AS transaction_id,
+				GROUP_CONCAT(DISTINCT account_reference ORDER BY account_reference SEPARATOR ', ') AS account_reference
+			FROM `tabSMS Enabler Payment Register`
+			WHERE IFNULL(payment_entry, '') != ''
+			GROUP BY payment_entry
+		) sms_reg ON sms_reg.payment_entry = pe.name
 		{item_group_ratio_join}
 		WHERE si.pos_profile = %(pos_profile)s
 			AND si.docstatus = 1
@@ -1684,26 +1698,46 @@ def _get_sales_report_payment_export(
 			AND per.allocated_amount != 0
 			{sales_person_filter}
 			{item_group_filter}
-		GROUP BY si.name, pe.mode_of_payment
+		GROUP BY si.name, pe.name, pe.mode_of_payment
 		""",
 		params,
 		as_dict=True,
 	)
 
 	payments_by_invoice = {}
-	for payment in list(inline_payments or []) + list(payment_entries or []):
+	for payment in inline_payments or []:
 		invoice_id = payment.get("invoice_id")
 		mode_of_payment = payment.get("mode_of_payment") or _("Unspecified")
-		invoice_payments = payments_by_invoice.setdefault(invoice_id, {})
-		invoice_payments[mode_of_payment] = (
-			flt(invoice_payments.get(mode_of_payment)) + flt(payment.get("amount"))
+		payments_by_invoice.setdefault(invoice_id, []).append(
+			{
+				"mode_of_payment": mode_of_payment,
+				"amount": flt(payment.get("amount")),
+				"payment_entry": "",
+				"sms_payment_register_id": "",
+				"sms_transaction_id": "",
+				"sms_account_reference": "",
+			}
+		)
+
+	for payment in payment_entries or []:
+		invoice_id = payment.get("invoice_id")
+		mode_of_payment = payment.get("mode_of_payment") or _("Unspecified")
+		payments_by_invoice.setdefault(invoice_id, []).append(
+			{
+				"mode_of_payment": mode_of_payment,
+				"amount": flt(payment.get("amount")),
+				"payment_entry": payment.get("payment_entry") or "",
+				"sms_payment_register_id": payment.get("sms_payment_register_id") or "",
+				"sms_transaction_id": payment.get("sms_transaction_id") or "",
+				"sms_account_reference": payment.get("sms_account_reference") or "",
+			}
 		)
 
 	rows = []
 	mode_totals = {}
 	for invoice in invoices:
-		invoice_payments = dict(payments_by_invoice.get(invoice.name) or {})
-		allocated_amount = flt(sum(invoice_payments.values()))
+		invoice_payments = list(payments_by_invoice.get(invoice.name) or [])
+		allocated_amount = flt(sum(payment.get("amount") for payment in invoice_payments))
 		invoice_total = flt(invoice.grand_total)
 		if item_group_bounds:
 			invoice_total = allocated_amount
@@ -1714,24 +1748,53 @@ def _get_sales_report_payment_export(
 				if abs(flt(invoice.outstanding_amount)) > 0.005
 				else _("Unspecified")
 			)
-			invoice_payments[mode] = (
-				flt(invoice_payments.get(mode)) + unallocated_amount
+			invoice_payments.append(
+				{
+					"mode_of_payment": mode,
+					"amount": flt(unallocated_amount),
+					"payment_entry": "",
+					"sms_payment_register_id": "",
+					"sms_transaction_id": "",
+					"sms_account_reference": "",
+				}
 			)
 		elif not invoice_payments:
-			invoice_payments[_("Unspecified")] = 0
+			invoice_payments.append(
+				{
+					"mode_of_payment": _("Unspecified"),
+					"amount": 0,
+					"payment_entry": "",
+					"sms_payment_register_id": "",
+					"sms_transaction_id": "",
+					"sms_account_reference": "",
+				}
+			)
 
-		for mode_of_payment, amount in sorted(invoice_payments.items()):
+		for payment in sorted(
+			invoice_payments,
+			key=lambda row: (
+				cstr(row.get("mode_of_payment")),
+				cstr(row.get("payment_entry")),
+				cstr(row.get("sms_payment_register_id")),
+			),
+		):
+			mode_of_payment = payment.get("mode_of_payment") or _("Unspecified")
+			amount = flt(payment.get("amount"))
 			rows.append(
 				{
 					"posting_date": invoice.posting_date,
 					"invoice_id": invoice.name,
 					"sales_person": invoice.sales_person or _("Unassigned"),
 					"mode_of_payment": mode_of_payment,
-					"amount": flt(amount),
+					"amount": amount,
+					"payment_entry": payment.get("payment_entry") or "",
+					"sms_payment_register_id": payment.get("sms_payment_register_id") or "",
+					"sms_transaction_id": payment.get("sms_transaction_id") or "",
+					"sms_account_reference": payment.get("sms_account_reference") or "",
 				}
 			)
 			mode_totals[mode_of_payment] = (
-				flt(mode_totals.get(mode_of_payment)) + flt(amount)
+				flt(mode_totals.get(mode_of_payment)) + amount
 			)
 
 	return {
@@ -1767,6 +1830,10 @@ def _build_sales_report_xlsx(report, pos_profile, from_date, to_date, currency):
 			_("Sales Person"),
 			_("Mode of Payment"),
 			_("Amount"),
+			_("Payment Entry"),
+			_("SMS Enabler Payment Register ID"),
+			_("Transaction ID"),
+			_("Account Reference"),
 		],
 	]
 	for row in report["rows"]:
@@ -1777,24 +1844,28 @@ def _build_sales_report_xlsx(report, pos_profile, from_date, to_date, currency):
 				row["sales_person"],
 				row["mode_of_payment"],
 				flt(row["amount"]),
+				row.get("payment_entry") or "",
+				row.get("sms_payment_register_id") or "",
+				row.get("sms_transaction_id") or "",
+				row.get("sms_account_reference") or "",
 			]
 		)
 
 	data.extend([[], [_("Totals by Mode of Payment")]])
 	for total in report["mode_totals"]:
 		data.append(
-			["", "", "", total["mode_of_payment"], flt(total["amount"])]
+			["", "", "", total["mode_of_payment"], flt(total["amount"]), "", "", "", ""]
 		)
 	data.extend(
 		[
-			["", "", "", _("Overall Total"), flt(report["total_amount"])],
-			["", "", "", _("Invoices"), cint(report["invoice_count"])],
+			["", "", "", _("Overall Total"), flt(report["total_amount"]), "", "", "", ""],
+			["", "", "", _("Invoices"), cint(report["invoice_count"]), "", "", "", ""],
 		]
 	)
 	return make_xlsx(
 		data,
 		_("POS Sales Report"),
-		column_widths=[16, 24, 24, 24, 18],
+		column_widths=[16, 24, 24, 24, 18, 24, 34, 24, 26],
 	).getvalue()
 
 
@@ -1809,6 +1880,10 @@ def _build_sales_report_pdf(report, pos_profile, from_date, to_date, currency):
 			<td>{escape(cstr(row["sales_person"]))}</td>
 			<td>{escape(cstr(row["mode_of_payment"]))}</td>
 			<td class="amount">{escape(fmt_money(row["amount"], currency=currency))}</td>
+			<td>{escape(cstr(row.get("payment_entry") or ""))}</td>
+			<td>{escape(cstr(row.get("sms_payment_register_id") or ""))}</td>
+			<td>{escape(cstr(row.get("sms_transaction_id") or ""))}</td>
+			<td>{escape(cstr(row.get("sms_account_reference") or ""))}</td>
 		</tr>
 		"""
 		for row in report["rows"]
@@ -1828,12 +1903,12 @@ def _build_sales_report_pdf(report, pos_profile, from_date, to_date, currency):
 	<head>
 		<meta charset="utf-8">
 		<style>
-			@page {{ size: A4; margin: 18mm 14mm; }}
-			body {{ color: #1f2937; font-family: sans-serif; font-size: 10pt; }}
+			@page {{ size: A4 landscape; margin: 12mm 10mm; }}
+			body {{ color: #1f2937; font-family: sans-serif; font-size: 9pt; }}
 			h1 {{ font-size: 18pt; margin: 0 0 6px; }}
 			.meta {{ color: #4b5563; margin-bottom: 18px; }}
 			table {{ border-collapse: collapse; width: 100%; }}
-			th, td {{ border: 1px solid #d1d5db; padding: 7px 8px; }}
+			th, td {{ border: 1px solid #d1d5db; padding: 5px 6px; word-break: break-word; }}
 			th {{ background: #f3f4f6; text-align: left; }}
 			.amount {{ text-align: right; white-space: nowrap; }}
 			.totals {{ margin-top: 16px; }}
@@ -1858,6 +1933,10 @@ def _build_sales_report_pdf(report, pos_profile, from_date, to_date, currency):
 					<th>{escape(_("Sales Person"))}</th>
 					<th>{escape(_("Mode of Payment"))}</th>
 					<th class="amount">{escape(_("Amount"))}</th>
+					<th>{escape(_("Payment Entry"))}</th>
+					<th>{escape(_("SMS Enabler Payment Register ID"))}</th>
+					<th>{escape(_("Transaction ID"))}</th>
+					<th>{escape(_("Account Reference"))}</th>
 				</tr>
 			</thead>
 			<tbody>{rows_html}</tbody>
