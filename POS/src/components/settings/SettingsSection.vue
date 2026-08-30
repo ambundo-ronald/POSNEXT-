@@ -174,6 +174,6 @@ const icons = {
 }
 
 function getIcon(iconName) {
-	return icons[iconName] || icons["settings"]
+	return icons[iconName] || icons.settings
 }
 </script>

@@ -609,7 +609,7 @@ watch(() => props.modelValue, async (newVal) => {
 					limit: 1
 				})
 				const item = itemResponse?.[0]
-				if (item && item.has_variants) {
+				if (item?.has_variants) {
 					selectedItemCode.value = props.itemCode
 					selectedItemName.value = props.itemName || props.itemCode
 					selectedItemHasVariants.value = true
@@ -906,7 +906,7 @@ function highlightMatch(text, query) {
 function formatPrice(price) {
 	if (!price) return ''
 	const num = Number(price)
-	if (isNaN(num)) return ''
+	if (Number.isNaN(num)) return ''
 	return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 </script>

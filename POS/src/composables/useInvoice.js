@@ -74,7 +74,7 @@ export function useInvoice() {
 				invoice_data: JSON.stringify(invoice_data),
 			}
 
-			if (selected_offers && selected_offers.length) {
+			if (selected_offers?.length) {
 				params.selected_offers = JSON.stringify(selected_offers)
 			}
 
@@ -951,7 +951,7 @@ export function useInvoice() {
 			// Set the default customer if one is configured
 			const defaultCustomer = result?.message || result
 
-			if (defaultCustomer && defaultCustomer.customer) {
+			if (defaultCustomer?.customer) {
 				// Create customer object matching the structure from customer selection
 				customer.value = {
 					name: defaultCustomer.customer,

@@ -100,7 +100,11 @@ const isChanging = ref(false)    // Language change in progress
 const dropdownRef = ref(null)    // DOM ref for click-outside detection
 
 /** Toggles dropdown (disabled while changing language) */
-const toggleDropdown = () => !isChanging.value && (isOpen.value = !isOpen.value)
+function toggleDropdown() {
+	if (!isChanging.value) {
+		isOpen.value = !isOpen.value
+	}
+}
 
 /**
  * Handles language selection from dropdown.
@@ -120,7 +124,11 @@ const selectLanguage = async (code) => {
 }
 
 /** Closes dropdown when clicking outside the component */
-const handleClickOutside = (e) => dropdownRef.value?.contains(e.target) || (isOpen.value = false)
+function handleClickOutside(e) {
+	if (!dropdownRef.value?.contains(e.target)) {
+		isOpen.value = false
+	}
+}
 
 // Event listener lifecycle
 onMounted(() => document.addEventListener("click", handleClickOutside))

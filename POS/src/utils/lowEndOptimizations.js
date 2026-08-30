@@ -11,21 +11,19 @@ const log = logger.create('LowEndOptimizations')
 /**
  * requestIdleCallback polyfill for browsers that don't support it
  */
-const requestIdleCallback = window.requestIdleCallback || function(cb) {
+const requestIdleCallback = window.requestIdleCallback || ((cb) => {
 	const start = Date.now()
-	return setTimeout(function() {
+	return setTimeout(() => {
 		cb({
 			didTimeout: false,
-			timeRemaining: function() {
-				return Math.max(0, 50 - (Date.now() - start))
-			}
+			timeRemaining: () => Math.max(0, 50 - (Date.now() - start))
 		})
 	}, 1)
-}
+})
 
-const cancelIdleCallback = window.cancelIdleCallback || function(id) {
+const cancelIdleCallback = window.cancelIdleCallback || ((id) => {
 	clearTimeout(id)
-}
+})
 
 /**
  * Schedule a task to run during browser idle time

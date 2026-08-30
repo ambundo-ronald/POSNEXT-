@@ -19,6 +19,7 @@ from frappe.utils import flt, nowdate
 MPESA_SETTINGS_DOCTYPE = "Mpesa Settings"
 MPESA_REGISTER_DOCTYPE = "Mpesa C2B Payment Register"
 MPESA_SALES_INVOICE_FIELD = "sales_invoice"
+POS_PROFILE_MPESA_SHORTCODE_FIELD = "posa_mpesa_business_shortcode"
 
 
 def _doctype_exists(doctype):
@@ -68,6 +69,38 @@ def _get_phone_mop_for_company(company):
 	return None
 
 
+def _get_phone_mop_for_profile(company=None, pos_profile=None):
+	"""Prefer the active POS Profile's Phone mode of payment, then fallback."""
+	if company and pos_profile and _doctype_exists("POS Payment Method"):
+		profile_methods = frappe.get_all(
+			"POS Payment Method",
+			filters={"parent": pos_profile, "parenttype": "POS Profile"},
+			fields=["mode_of_payment"],
+			order_by="idx asc",
+		)
+		for method in profile_methods:
+			mode_of_payment = method.get("mode_of_payment")
+			if not mode_of_payment:
+				continue
+			mop = frappe.db.get_value(
+				"Mode of Payment",
+				mode_of_payment,
+				["name", "type", "enabled"],
+				as_dict=True,
+			)
+			if not mop or mop.get("type") != "Phone" or not mop.get("enabled"):
+				continue
+			account = frappe.db.get_value(
+				"Mode of Payment Account",
+				{"parent": mop.name, "company": company},
+				"default_account",
+			)
+			if account:
+				return mop.name
+
+	return _get_phone_mop_for_company(company)
+
+
 def _get_mpesa_shortcode_for_company(company):
 	"""Get business shortcode from Mpesa Settings for the company."""
 	if not company or not _doctype_exists(MPESA_SETTINGS_DOCTYPE):
@@ -84,6 +117,55 @@ def _get_mpesa_shortcode_for_company(company):
 		return str(settings[0].business_shortcode)
 
 	return None
+
+
+def _get_mpesa_shortcode_for_pos_profile(pos_profile):
+	"""Get the profile-specific till/paybill shortcode when configured."""
+	if not pos_profile or not _has_field("POS Profile", POS_PROFILE_MPESA_SHORTCODE_FIELD):
+		return None
+
+	shortcode = frappe.db.get_value("POS Profile", pos_profile, POS_PROFILE_MPESA_SHORTCODE_FIELD)
+	return str(shortcode or "").strip() or None
+
+
+def _get_mpesa_shortcode(company=None, pos_profile=None):
+	"""Resolve the Quick Pay shortcode.
+
+	When a POS Profile is supplied, Quick Pay must be explicitly enabled for that
+	profile by setting its M-Pesa business shortcode. This prevents one branch from
+	seeing another branch's company-level M-Pesa register payments.
+	"""
+	if pos_profile:
+		return _get_mpesa_shortcode_for_pos_profile(pos_profile)
+
+	return _get_mpesa_shortcode_for_company(company)
+
+
+def _get_mpesa_settings_for_scope(company=None, pos_profile=None, fields=None):
+	if not company or not _doctype_exists(MPESA_SETTINGS_DOCTYPE):
+		return None
+
+	fields = fields or ["name", "business_shortcode"]
+	profile_shortcode = _get_mpesa_shortcode_for_pos_profile(pos_profile)
+	if pos_profile and not profile_shortcode:
+		return None
+
+	if profile_shortcode:
+		settings = frappe.get_all(
+			MPESA_SETTINGS_DOCTYPE,
+			filters={"company": company, "business_shortcode": profile_shortcode},
+			fields=fields,
+			limit=1,
+		)
+		return settings[0] if settings else None
+
+	settings = frappe.get_all(
+		MPESA_SETTINGS_DOCTYPE,
+		filters={"company": company},
+		fields=fields,
+		limit=1,
+	)
+	return settings[0] if settings else None
 
 
 def _ensure_sales_invoice_link_field():
@@ -216,6 +298,7 @@ def _build_mpesa_payment_fields():
 		"msisdn",
 		"posting_date",
 		"billrefnumber",
+		"businessshortcode",
 		"creation",
 	]
 
@@ -259,14 +342,15 @@ def check_mpesa_available(company=None, pos_profile=None):
 			"reason": _("M-Pesa payment app is not installed"),
 		}
 
-	phone_mop = _get_phone_mop_for_company(company)
-	shortcode = _get_mpesa_shortcode_for_company(company)
+	phone_mop = _get_phone_mop_for_profile(company=company, pos_profile=pos_profile)
+	shortcode = _get_mpesa_shortcode(company=company, pos_profile=pos_profile)
 
 	return {
 		"available": bool(phone_mop and shortcode),
 		"mode_of_payment": phone_mop,
 		"shortcode": shortcode,
 		"company": company,
+		"scope": "POS Profile" if _get_mpesa_shortcode_for_pos_profile(pos_profile) else "Company",
 	}
 
 
@@ -284,7 +368,7 @@ def get_mpesa_payments(company=None, pos_profile=None, search=None, amount=None,
 	if not company or not _doctype_exists(MPESA_REGISTER_DOCTYPE):
 		return {"count": 0, "payments": []}
 
-	shortcode = _get_mpesa_shortcode_for_company(company)
+	shortcode = _get_mpesa_shortcode(company=company, pos_profile=pos_profile)
 	if not shortcode:
 		return {"count": 0, "payments": []}
 
@@ -307,6 +391,7 @@ def get_mpesa_payments(company=None, pos_profile=None, search=None, amount=None,
 			"msisdn",
 			"posting_date",
 			"billrefnumber",
+			"businessshortcode",
 			"creation",
 		],
 		order_by="creation desc",
@@ -382,19 +467,20 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, mp
 
 	invoice_doc = frappe.get_doc("Sales Invoice", invoice)
 	company = _resolve_company(company=company, invoice=invoice) or invoice_doc.company
+	pos_profile = invoice_doc.get("pos_profile")
 	customer = customer or invoice_doc.customer
 
 	mpesa_names = _parse_mpesa_names(mpesa_payments)
 	if not mpesa_names:
 		frappe.throw(_("No M-Pesa payments selected"))
 
-	phone_mop = _get_phone_mop_for_company(company)
+	phone_mop = _get_phone_mop_for_profile(company=company, pos_profile=pos_profile)
 	if not phone_mop:
 		frappe.throw(_("No Phone type Mode of Payment configured for {0}").format(company))
 
-	shortcode = _get_mpesa_shortcode_for_company(company)
+	shortcode = _get_mpesa_shortcode(company=company, pos_profile=pos_profile)
 	if not shortcode:
-		frappe.throw(_("No Mpesa Settings found for {0}").format(company))
+		frappe.throw(_("No M-Pesa shortcode configured for {0}").format(pos_profile or company))
 
 	_ensure_sales_invoice_link_field()
 
@@ -455,9 +541,9 @@ def get_stk_payment_match(invoice=None, payment_request=None, phone_number=None,
 		return {"matched": False, "reason": _("M-Pesa payment app is not installed")}
 
 	company = _resolve_company(company=company, pos_profile=pos_profile, invoice=invoice)
-	shortcode = _get_mpesa_shortcode_for_company(company)
+	shortcode = _get_mpesa_shortcode(company=company, pos_profile=pos_profile)
 	if not shortcode:
-		return {"matched": False, "reason": _("No Mpesa Settings found for {0}").format(company)}
+		return {"matched": False, "reason": _("No M-Pesa shortcode configured for {0}").format(pos_profile or company)}
 
 	amount = flt(amount or 0)
 	references = [invoice, payment_request]
@@ -510,23 +596,23 @@ def get_stk_payment_match(invoice=None, payment_request=None, phone_number=None,
 
 
 @frappe.whitelist()
-def create_payment_request(invoice=None, customer=None, phone_number=None, amount=None):
+def create_payment_request(invoice=None, customer=None, phone_number=None, amount=None, pos_profile=None):
 	"""Create an STK payment request for an existing Sales Invoice."""
 	if not invoice or not phone_number or flt(amount) <= 0:
 		frappe.throw(_("Sales Invoice, phone number, and amount are required"))
 
 	invoice_doc = frappe.get_doc("Sales Invoice", invoice)
+	pos_profile = pos_profile or invoice_doc.get("pos_profile")
 
-	mpesa_settings = frappe.get_all(
-		MPESA_SETTINGS_DOCTYPE,
-		filters={"company": invoice_doc.company},
-		fields=["name", "payment_gateway_name"],
-		limit=1,
+	mpesa_settings = _get_mpesa_settings_for_scope(
+		company=invoice_doc.company,
+		pos_profile=pos_profile,
+		fields=["name", "business_shortcode", "payment_gateway_name"],
 	)
 	if not mpesa_settings:
-		frappe.throw(_("No Mpesa Settings found for {0}").format(invoice_doc.company))
+		frappe.throw(_("No Mpesa Settings found for {0}").format(pos_profile or invoice_doc.company))
 
-	gateway_name = mpesa_settings[0].get("payment_gateway_name") or mpesa_settings[0].get("name")
+	gateway_name = mpesa_settings.get("payment_gateway_name") or mpesa_settings.get("name")
 	gateway_account = frappe.db.get_value(
 		"Payment Gateway Account",
 		{"payment_gateway": gateway_name},
@@ -547,7 +633,7 @@ def create_payment_request(invoice=None, customer=None, phone_number=None, amoun
 	if not gateway_account:
 		frappe.throw(_("No Payment Gateway Account found for Mpesa"))
 
-	phone_mop = _get_phone_mop_for_company(invoice_doc.company)
+	phone_mop = _get_phone_mop_for_profile(company=invoice_doc.company, pos_profile=pos_profile)
 
 	payment_request = frappe.new_doc("Payment Request")
 	payment_request.payment_request_type = "Inward"

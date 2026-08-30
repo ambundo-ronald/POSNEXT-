@@ -262,7 +262,7 @@ const stockWarning = computed(() => {
  */
 function validateQuantity() {
 	// Handle invalid, negative, or decimal values
-	if (!quantity.value || isNaN(quantity.value) || quantity.value < 1) {
+	if (!quantity.value || Number.isNaN(Number(quantity.value)) || quantity.value < 1) {
 		quantity.value = 1
 	} else {
 		// Round to nearest integer for UOM quantities
@@ -435,7 +435,7 @@ function getUomPrice(uom, conversionFactor) {
 	if (!props.item) return 0
 
 	// Check if we have UOM-specific prices
-	if (props.item.uom_prices && props.item.uom_prices[uom]) {
+	if (props.item.uom_prices?.[uom]) {
 		return props.item.uom_prices[uom]
 	}
 

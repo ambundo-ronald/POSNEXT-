@@ -130,7 +130,9 @@ async function initializeApp() {
 
 	// Disable double-tap zoom on mobile for faster touch response
 	app.directive("touch-action", {
-		mounted: (el) => (el.style.touchAction = "manipulation"),
+		mounted(el) {
+			el.style.touchAction = "manipulation"
+		},
 	})
 
 	// -------------------------------------------------------------------------

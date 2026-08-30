@@ -312,6 +312,8 @@ def build_sales_team_from_item_commissions(invoice_doc):
 # ==========================================
 
 CLIENT_TRANSACTION_FIELD = "posa_client_transaction_id"
+POSA_PRINT_FORMAT_FIELD = "posa_print_format"
+POSA_LETTER_HEAD_FIELD = "posa_letter_head"
 
 
 def _invoice_submission_response(invoice_doc):
@@ -325,6 +327,27 @@ def _invoice_submission_response(invoice_doc):
         "paid_amount": invoice_doc.paid_amount,
         "change_amount": getattr(invoice_doc, "change_amount", 0),
     }
+
+
+def _remember_pos_print_settings(invoice_doc, pos_profile_doc=None):
+    """Freeze the POS Profile print settings on the invoice for consistent reprints."""
+    if not invoice_doc or not invoice_doc.get("pos_profile"):
+        return
+
+    meta = frappe.get_meta("Sales Invoice")
+    if not (meta.has_field(POSA_PRINT_FORMAT_FIELD) or meta.has_field(POSA_LETTER_HEAD_FIELD)):
+        return
+
+    if pos_profile_doc is None:
+        try:
+            pos_profile_doc = frappe.get_cached_doc("POS Profile", invoice_doc.get("pos_profile"))
+        except Exception:
+            return
+
+    if meta.has_field(POSA_PRINT_FORMAT_FIELD) and not invoice_doc.get(POSA_PRINT_FORMAT_FIELD):
+        invoice_doc.set(POSA_PRINT_FORMAT_FIELD, pos_profile_doc.get("print_format") or "POS Next Receipt")
+    if meta.has_field(POSA_LETTER_HEAD_FIELD) and not invoice_doc.get(POSA_LETTER_HEAD_FIELD):
+        invoice_doc.set(POSA_LETTER_HEAD_FIELD, pos_profile_doc.get("letter_head") or "")
 
 
 def _get_invoice_for_client_transaction(client_transaction_id, pos_profile=None):
@@ -844,6 +867,8 @@ def update_invoice(data):
                 invoice_doc.selling_price_list = effective_price_list
 
             # Copy accounting dimensions from POS Profile
+            _remember_pos_print_settings(invoice_doc, pos_profile_doc)
+
             if hasattr(pos_profile_doc, "branch") and pos_profile_doc.branch:
                 invoice_doc.branch = pos_profile_doc.branch
                 # Also set branch on all items for GL entries
@@ -1119,18 +1144,22 @@ def submit_invoice(invoice=None, data=None):
         # Ensure update_stock is set
         invoice_doc.update_stock = 1
 
-        # Copy accounting dimensions from POS Profile if not already set
-        if pos_profile and not invoice_doc.get("branch"):
+        # Copy accounting dimensions and print settings from POS Profile
+        if pos_profile:
             try:
                 pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
-                if hasattr(pos_profile_doc, "branch") and pos_profile_doc.branch:
+                _remember_pos_print_settings(invoice_doc, pos_profile_doc)
+
+                if not invoice_doc.get("branch") and hasattr(pos_profile_doc, "branch") and pos_profile_doc.branch:
                     invoice_doc.branch = pos_profile_doc.branch
                     # Also set branch on all items for GL entries
                     for item in invoice_doc.get("items", []):
                         if not item.get("branch"):
                             item.branch = pos_profile_doc.branch
             except Exception:
-                pass  # Branch is optional, continue without it
+                pass  # Branch and print format are optional, continue without them
+
+        _remember_pos_print_settings(invoice_doc)
 
         normalize_pos_invoice_payments(invoice_doc, invoice_doc.company)
 

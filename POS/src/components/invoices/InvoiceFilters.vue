@@ -287,28 +287,32 @@ function isDatePresetActive(preset) {
 	const today = new Date()
 	today.setHours(0, 0, 0, 0)
 
-	let fromDate, toDate
+	let fromDate
+	let toDate
 
 	switch (preset) {
 		case "today":
 			fromDate = toDate = formatDateForInput(today)
 			break
-		case "yesterday":
+		case "yesterday": {
 			const yesterday = new Date(today)
 			yesterday.setDate(yesterday.getDate() - 1)
 			fromDate = toDate = formatDateForInput(yesterday)
 			break
-		case "week":
+		}
+		case "week": {
 			const weekStart = new Date(today)
 			weekStart.setDate(today.getDate() - today.getDay())
 			fromDate = formatDateForInput(weekStart)
 			toDate = formatDateForInput(today)
 			break
-		case "month":
+		}
+		case "month": {
 			const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
 			fromDate = formatDateForInput(monthStart)
 			toDate = formatDateForInput(today)
 			break
+		}
 		default:
 			return false
 	}

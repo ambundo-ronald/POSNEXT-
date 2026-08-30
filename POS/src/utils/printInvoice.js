@@ -14,6 +14,7 @@ export async function printInvoice(
 	invoiceData,
 	printFormat = null,
 	letterhead = null,
+	options = {},
 ) {
 	try {
 		if (!invoiceData || !invoiceData.name) {
@@ -23,29 +24,33 @@ export async function printInvoice(
 		const doctype = invoiceData.doctype || "Sales Invoice"
 		const format = printFormat || "POS Next Receipt"
 
-		// Build PDF print URL
-		const params = new URLSearchParams({
-			doctype: doctype,
-			name: invoiceData.name,
-			format: format,
-			no_letterhead: letterhead ? 0 : 1,
-			_lang: "en",
-			trigger_print: 1,
-			_t: Date.now(), // Cache buster to force fresh print format
-		})
+		const copies = getPrintCopyCount(invoiceData, options)
 
-		if (letterhead) {
-			params.append("letterhead", letterhead)
-		}
+		for (let copyIndex = 0; copyIndex < copies; copyIndex += 1) {
+			// Build PDF print URL
+			const params = new URLSearchParams({
+				doctype: doctype,
+				name: invoiceData.name,
+				format: format,
+				no_letterhead: letterhead ? 0 : 1,
+				_lang: "en",
+				trigger_print: 1,
+				_t: `${Date.now()}-${copyIndex}`, // Cache buster to force fresh print format
+			})
 
-		// Open PDF in new window - browser will handle print dialog
-		const printUrl = `/printview?${params.toString()}`
-		const printWindow = window.open(printUrl, "_blank", "width=800,height=600")
+			if (letterhead) {
+				params.append("letterhead", letterhead)
+			}
 
-		if (!printWindow) {
-			throw new Error(
-				"Failed to open print window. Please check your popup blocker settings.",
-			)
+			// Open PDF in new window - browser will handle print dialog
+			const printUrl = `/printview?${params.toString()}`
+			const printWindow = window.open(printUrl, "_blank", "width=800,height=600")
+
+			if (!printWindow) {
+				throw new Error(
+					"Failed to open print window. Please check your popup blocker settings.",
+				)
+			}
 		}
 
 		return true
@@ -472,6 +477,28 @@ export function printInvoiceCustom(invoiceData) {
 	}
 }
 
+function getPrintCopyCount(invoiceData, options = {}) {
+	const explicitCopies = Number(options.copies)
+	if (Number.isFinite(explicitCopies) && explicitCopies > 0) {
+		return Math.max(1, Math.floor(explicitCopies))
+	}
+
+	return options.creditSale || isCreditSaleInvoice(invoiceData) ? 2 : 1
+}
+
+function isCreditSaleInvoice(invoiceData = {}) {
+	if (invoiceData.is_credit_sale) {
+		return true
+	}
+
+	const grandTotal = Number.parseFloat(invoiceData.grand_total || 0)
+	const outstanding = Number.parseFloat(invoiceData.outstanding_amount || 0)
+	const paid = Number.parseFloat(invoiceData.paid_amount || 0)
+	const payments = Array.isArray(invoiceData.payments) ? invoiceData.payments : []
+
+	return grandTotal > 0 && outstanding > 0.005 && paid <= 0.005 && payments.length === 0
+}
+
 function formatCurrency(amount) {
 	return Number.parseFloat(amount || 0).toFixed(2)
 }
@@ -486,6 +513,7 @@ export async function printInvoiceByName(
 	invoiceName,
 	printFormat = null,
 	letterhead = null,
+	options = {},
 ) {
 	try {
 		// Fetch the invoice document using proper POS API endpoint
@@ -497,8 +525,11 @@ export async function printInvoiceByName(
 			throw new Error("Invoice not found")
 		}
 
-		// If no print format specified and invoice has a POS Profile, fetch its print settings
-		if (!printFormat && invoiceDoc.pos_profile) {
+		let resolvedPrintFormat = printFormat || invoiceDoc.posa_print_format
+		let resolvedLetterhead = letterhead || invoiceDoc.posa_letter_head
+
+		// If the invoice does not have stored print settings, fall back to its POS Profile.
+		if (!resolvedPrintFormat && invoiceDoc.pos_profile) {
 			try {
 				const posProfileDoc = await call("frappe.client.get", {
 					doctype: "POS Profile",
@@ -506,8 +537,8 @@ export async function printInvoiceByName(
 				})
 
 				if (posProfileDoc) {
-					printFormat = posProfileDoc.print_format
-					letterhead = letterhead || posProfileDoc.letter_head
+					resolvedPrintFormat = posProfileDoc.print_format
+					resolvedLetterhead = resolvedLetterhead || posProfileDoc.letter_head
 				}
 			} catch (error) {
 				log.warn("Could not fetch POS Profile print settings:", error)
@@ -516,7 +547,7 @@ export async function printInvoiceByName(
 		}
 
 		// Print the invoice
-		return await printInvoice(invoiceDoc, printFormat, letterhead)
+		return await printInvoice(invoiceDoc, resolvedPrintFormat, resolvedLetterhead, options)
 	} catch (error) {
 		log.error("Error fetching invoice for print:", error)
 		throw error

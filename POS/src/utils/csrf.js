@@ -4,7 +4,7 @@ const CSRF_TOKEN_ENDPOINT = "/api/method/pos_next.api.utilities.get_csrf_token"
 
 let refreshPromise = null
 let lastKnownToken = null
-let tokenRefreshCallbacks = [] // Callbacks to notify when token is refreshed
+const tokenRefreshCallbacks = [] // Callbacks to notify when token is refreshed
 
 function readCookie(name) {
 	const value = `; ${document.cookie}`

@@ -193,7 +193,7 @@ class PerformanceConfig {
 			log.debug("Performance Config Detected", {
 				tier: this.tier,
 				autoDetected: this.autoDetectedTier,
-				manual: manualTier ? true : false,
+				manual: !!manualTier,
 				cpuCores: this.cpuCores,
 				deviceMemory: `${this.deviceMemory}GB`,
 				isMobile: this.isMobile,
@@ -388,7 +388,7 @@ class PerformanceConfig {
 	 * Calculate dynamic batch size based on data size and device capability
 	 */
 	getDynamicBatchSize(dataSize, operation = "default") {
-		let baseBatchSize = this.config.backgroundSyncBatchSize
+		const baseBatchSize = this.config.backgroundSyncBatchSize
 
 		// Adjust based on operation type
 		const operationMultipliers = {

@@ -146,7 +146,7 @@ async function initDB() {
 
 				// Exponential backoff before retry
 				await new Promise(resolve =>
-					setTimeout(resolve, CONFIG.RETRY_DELAY_MS * Math.pow(2, attempt - 1))
+					setTimeout(resolve, CONFIG.RETRY_DELAY_MS * 2 ** (attempt - 1))
 				)
 			}
 		}
@@ -187,7 +187,7 @@ let stockSyncRunning = false
  */
 function recordMetric(operation, duration, isError = false) {
 	if (!metrics.has(operation)) {
-		metrics.set(operation, { count: 0, totalTime: 0, errors: 0, avgTime: 0, minTime: Infinity, maxTime: 0 })
+		metrics.set(operation, { count: 0, totalTime: 0, errors: 0, avgTime: 0, minTime: Number.POSITIVE_INFINITY, maxTime: 0 })
 	}
 
 	const metric = metrics.get(operation)
@@ -719,7 +719,7 @@ async function cacheItemsFromServer(items) {
 
 		log.success(`Cached ${totalProcessed} items in ${duration}ms`, {
 			batches: batches.length,
-			throughput: Math.round(totalProcessed / (duration / 1000)) + ' items/s',
+			throughput: `${Math.round(totalProcessed / (duration / 1000))} items/s`,
 		})
 
 		return { success: true, count: totalProcessed, duration }

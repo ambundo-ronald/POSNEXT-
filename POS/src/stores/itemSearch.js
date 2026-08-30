@@ -479,36 +479,39 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				let compareResult = 0
 
 				switch (sortBy.value) {
-					case 'name':
+					case 'name': {
 						// Sort by item_name alphabetically
 						const nameA = (a.item_name || '').toLowerCase()
 						const nameB = (b.item_name || '').toLowerCase()
 						compareResult = nameA.localeCompare(nameB)
 						break
+					}
 
 					case 'quantity':
 						// Sort by stock quantity
 						compareResult = (a.actual_qty ?? 0) - (b.actual_qty ?? 0)
 						break
 
-					case 'item_group':
+					case 'item_group': {
 						// Sort by item_group alphabetically
 						const groupA = (a.item_group || '').toLowerCase()
 						const groupB = (b.item_group || '').toLowerCase()
 						compareResult = groupA.localeCompare(groupB)
 						break
+					}
 
 					case 'price':
 						// Sort by price_list_rate (standard selling rate)
 						compareResult = (a.price_list_rate ?? 0) - (b.price_list_rate ?? 0)
 						break
 
-					case 'item_code':
+					case 'item_code': {
 						// Sort by item_code alphabetically
 						const codeA = (a.item_code || '').toLowerCase()
 						const codeB = (b.item_code || '').toLowerCase()
 						compareResult = codeA.localeCompare(codeB)
 						break
+					}
 
 					default:
 						// No sorting

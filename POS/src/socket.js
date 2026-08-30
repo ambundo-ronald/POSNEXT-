@@ -14,7 +14,7 @@ export function initSocket() {
 		// Try to get site name from various sources
 		const siteName =
 			window.site_name ||
-			(window.frappe && window.frappe.boot && window.frappe.boot.sitename) ||
+			(window.frappe?.boot?.sitename) ||
 			window.location.hostname
 
 		const host = window.location.hostname

@@ -49,7 +49,7 @@ function getCurrencySymbolOnly(currency) {
  * @returns {string} Formatted currency string
  */
 export function formatCurrency(value, currency = "USD", locale = "en-US") {
-	if (typeof value !== "number" || isNaN(value)) {
+	if (typeof value !== "number" || Number.isNaN(value)) {
 		return ""
 	}
 
@@ -85,7 +85,7 @@ export function getCurrencySymbol(currency = "USD") {
  * @returns {string} Formatted number string
  */
 export function formatCurrencyNumber(value, locale = "en-US") {
-	if (typeof value !== "number" || isNaN(value)) {
+	if (typeof value !== "number" || Number.isNaN(value)) {
 		return "0.00"
 	}
 

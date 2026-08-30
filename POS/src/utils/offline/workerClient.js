@@ -207,7 +207,7 @@ class OfflineWorkerClient {
 		const currentRetries = this.retryAttempts.get(messageType) || 0
 		this.retryAttempts.set(messageType, currentRetries + 1)
 
-		const delay = this.retryDelay * Math.pow(this.retryMultiplier, currentRetries)
+		const delay = this.retryDelay * this.retryMultiplier ** currentRetries
 		log.info(`Retrying ${messageType} in ${delay}ms`, { attempt: currentRetries + 1, maxRetries: this.maxRetries })
 
 		setTimeout(async () => {
@@ -251,7 +251,7 @@ class OfflineWorkerClient {
 
 		// Attempt to restart worker after a delay
 		if (this.initAttempts < this.maxInitAttempts) {
-			const restartDelay = 2000 * Math.pow(2, this.initAttempts)
+			const restartDelay = 2000 * 2 ** this.initAttempts
 			log.info(`Attempting worker restart in ${restartDelay}ms`)
 
 			setTimeout(() => {

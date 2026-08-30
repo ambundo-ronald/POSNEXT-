@@ -638,7 +638,7 @@ const loadPaymentMethodsResource = createResource({
 	},
 	auto: false,
 	onSuccess(data) {
-		if (data && data.payments) {
+		if (data?.payments) {
 			paymentMethods.value = data.payments
 		}
 	},
@@ -757,7 +757,7 @@ const createReturnResource = createResource({
 	auto: false,
 	transform(data) {
 		// Check if the response contains an error even on "success"
-		if (data && data.exc) {
+		if (data?.exc) {
 			throw data
 		}
 		return data
@@ -1064,7 +1064,7 @@ function initializePaymentsFromInvoice() {
 	}
 
 	// Initialize refund payments from original invoice payments
-	if (originalInvoice.value && originalInvoice.value.payments && originalInvoice.value.payments.length > 0) {
+	if (originalInvoice.value?.payments?.length > 0) {
 		// For partially paid invoices, we'll set the amount to 0 initially
 		// It will be updated by the watcher when returnTotal changes
 		refundPayments.value = originalInvoice.value.payments.map(payment => ({
@@ -1173,7 +1173,7 @@ async function handleCreateReturn() {
 		const result = await createReturnResource.submit()
 
 		// Check if result contains an error (HTTP 417 might return error in response body)
-		if (result && result.exc) {
+		if (result?.exc) {
 			throw result
 		}
 	} catch (error) {

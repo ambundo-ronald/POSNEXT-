@@ -130,16 +130,16 @@ export function getConversionPreview(items, taxRate, currentMode) {
 			tax: currentTaxTotal,
 			grandTotal: currentGrandTotal,
 			displayFormat: currentMode === 'inclusive' 
-				? `Subtotal (inc. tax) + Separate Tax`
-				: `Subtotal + Tax on top`
+				? "Subtotal (inc. tax) + Separate Tax"
+				: "Subtotal + Tax on top"
 		},
 		new: {
 			subtotal: newSubtotal,
 			tax: newTaxTotal,
 			grandTotal: newGrandTotal,
 			displayFormat: targetMode === 'inclusive'
-				? `Subtotal (inc. tax) + Separate Tax`
-				: `Subtotal + Tax on top`
+				? "Subtotal (inc. tax) + Separate Tax"
+				: "Subtotal + Tax on top"
 		},
 		priceChange: {
 			hasIncrease: newSubtotal > currentSubtotal,

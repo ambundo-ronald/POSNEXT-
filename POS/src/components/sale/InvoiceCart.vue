@@ -1360,7 +1360,7 @@ function decrementQuantity(item) {
 function updateQuantity(item, value) {
 	const qty = Number.parseFloat(value)
 	// Allow any positive number during typing (don't round yet)
-	if (!isNaN(qty) && qty > 0) {
+	if (!Number.isNaN(qty) && qty > 0) {
 		emit("update-quantity", item.item_code, qty, item.uom)
 	}
 }

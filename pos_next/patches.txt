@@ -8,3 +8,4 @@ pos_next.patches.v1_7_0.reinstall_workspace
 pos_next.patches.v1_11_1.update_branding_name_to_jorovin
 pos_next.patches.v1_11_1.backfill_sms_enabler_allocation_balances
 pos_next.patches.v1_11_1.add_client_transaction_id
+pos_next.patches.v1_11_1.add_pos_profile_mpesa_and_credit_print_settings

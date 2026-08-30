@@ -59,6 +59,7 @@
   "section_break_printing",
   "allow_print_last_invoice",
   "silent_print",
+  "print_credit_sale_copies",
   "section_break_delivery",
   "use_delivery_charges",
   "auto_set_delivery_charges",
@@ -451,6 +452,13 @@
    "fieldtype": "Check",
    "label": "Enable Silent Print",
    "description": "Print without dialog"
+  },
+  {
+   "default": "1",
+   "fieldname": "print_credit_sale_copies",
+   "fieldtype": "Check",
+   "label": "Print Two Credit Sale Copies",
+   "description": "Automatically print two receipt copies when a checkout is completed as a credit sale."
   },
   {
    "collapsible": 1,

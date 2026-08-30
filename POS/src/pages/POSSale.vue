@@ -965,7 +965,7 @@ onMounted(async () => {
 		log.info('Event: Pricing settings changed', changes)
 
 		// Update tax_inclusive setting if it changed
-		if (changes.hasOwnProperty('tax_inclusive')) {
+		if (Object.hasOwn(changes, 'tax_inclusive')) {
 			const newTaxInclusive = changes.tax_inclusive.new
 			log.info(`Updating tax_inclusive from ${changes.tax_inclusive.old} to ${newTaxInclusive}`)
 
@@ -993,12 +993,12 @@ onMounted(async () => {
 			})
 			cartStore.rebuildIncrementalCache()
 
-			const message = changes.hasOwnProperty('tax_inclusive')
+			const message = Object.hasOwn(changes, 'tax_inclusive')
 				? __('Tax mode updated. Cart recalculated with new tax settings.')
 				: __('Discount settings changed. Cart recalculated.')
 
 			showSuccess(message)
-		} else if (changes.hasOwnProperty('tax_inclusive')) {
+		} else if (Object.hasOwn(changes, 'tax_inclusive')) {
 			// Show feedback even if cart is empty
 			showSuccess(changes.tax_inclusive.new
 				? __('Prices are now tax-inclusive. This will apply to new items added to cart.')
@@ -1236,7 +1236,7 @@ watch(
 			if (warehouseChanged) {
 				log.info(`Warehouse changed (${lastSyncWarehouse} → ${warehouse}), updating periodic stock sync`)
 			} else {
-				log.info(`Items changed (catalog replacement or new items), updating periodic stock sync`)
+				log.info("Items changed (catalog replacement or new items), updating periodic stock sync")
 			}
 			await updatePeriodicStockSyncItems(warehouse)
 			lastSyncWarehouse = warehouse
@@ -1725,6 +1725,7 @@ async function requestMpesaStkPayment({ phone_number, amount }) {
 		customer: customerValue || shiftStore.profileCustomer,
 		phone_number,
 		amount,
+		pos_profile: cartStore.posProfile,
 	})
 
 	return {
@@ -1968,7 +1969,14 @@ async function handlePaymentCompleted(paymentData) {
 
 				if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
 					try {
-						await handlePrintInvoice({ name: invoiceName })
+						await handlePrintInvoice(
+							{ name: invoiceName },
+							{
+								creditSale:
+									Boolean(paymentData.is_credit_sale) &&
+									Boolean(posSettingsStore.settings?.print_credit_sale_copies),
+							},
+						)
 						showSuccess(__('Invoice {0} created and sent to printer', [invoiceName]))
 					} catch (error) {
 						log.error("Auto-print error:", error)
@@ -2612,15 +2620,15 @@ async function handleInvoicePaymentReconciled() {
 }
 
 // Centralized print handler - uses printInvoice.js utilities
-async function handlePrintInvoice(invoiceData) {
+async function handlePrintInvoice(invoiceData, options = {}) {
 	try {
 		// If invoiceData is a full document with items, use printInvoice directly
 		if (invoiceData.items && Array.isArray(invoiceData.items)) {
-			await printInvoice(invoiceData)
+			await printInvoice(invoiceData, null, null, options)
 		} else {
 			// If it's just an invoice object with name, fetch and print
 			// printInvoiceByName will automatically fetch the print format from the invoice's POS Profile
-			await printInvoiceByName(invoiceData.name)
+			await printInvoiceByName(invoiceData.name, null, null, options)
 		}
 	} catch (error) {
 		log.error("Error printing invoice:", error)

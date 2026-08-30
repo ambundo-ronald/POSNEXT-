@@ -654,6 +654,11 @@
 												:label="__('Silent Print')"
 												:description="__('Print without confirmation')"
 											/>
+											<CheckboxField
+												v-model="settings.print_credit_sale_copies"
+												:label="__('Print Two Credit Sale Copies')"
+												:description="__('When enabled, credit-sale checkout prints two receipt copies automatically.')"
+											/>
 										</div>
 									</div>
 								</div>
@@ -843,6 +848,7 @@ const settings = ref({
 	profile_sms_enabler_token: "",
 	profile_sms_enabler_sender_mappings: [],
 	silent_print: 0,
+	print_credit_sale_copies: 1,
 	allow_negative_stock: 0,
 	tax_inclusive: 0,
 	block_zero_price_sales: 0,
@@ -1368,7 +1374,7 @@ async function saveSettings() {
 				},
 			)
 
-			if (warehouseResult && warehouseResult.success) {
+			if (warehouseResult?.success) {
 				// Add warehouse to new settings for change detection
 				settings.value.warehouse = selectedWarehouse.value
 

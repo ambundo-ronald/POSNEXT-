@@ -935,5 +935,60 @@
   "search_index": 0,
   "translatable": 0,
   "unique": 0
+ },
+ {
+  "doctype": "Custom Field",
+  "dt": "POS Profile",
+  "fieldname": "posa_mpesa_quick_pay_section",
+  "fieldtype": "Section Break",
+  "insert_after": "posa_cash_mode_of_payment",
+  "label": "POS M-Pesa Quick Pay",
+  "module": "POS Next",
+  "name": "POS Profile-posa_mpesa_quick_pay_section"
+ },
+ {
+  "doctype": "Custom Field",
+  "dt": "POS Profile",
+  "description": "Branch till/paybill business shortcode used to show only this POS Profile's pending Quick Pay M-Pesa payments. Leave blank to use the company Mpesa Settings shortcode.",
+  "fieldname": "posa_mpesa_business_shortcode",
+  "fieldtype": "Data",
+  "insert_after": "posa_mpesa_quick_pay_section",
+  "label": "M-Pesa Business Shortcode",
+  "module": "POS Next",
+  "name": "POS Profile-posa_mpesa_business_shortcode"
+ },
+ {
+  "doctype": "Custom Field",
+  "dt": "Sales Invoice",
+  "fieldname": "posa_print_format",
+  "fieldtype": "Link",
+  "label": "POS Print Format",
+  "options": "Print Format",
+  "insert_after": "posa_client_transaction_id",
+  "hidden": 1,
+  "read_only": 1,
+  "allow_on_submit": 1,
+  "no_copy": 1,
+  "print_hide": 1,
+  "description": "Print format selected from the POS Profile when this invoice was created.",
+  "module": "POS Next",
+  "name": "Sales Invoice-posa_print_format"
+ },
+ {
+  "doctype": "Custom Field",
+  "dt": "Sales Invoice",
+  "fieldname": "posa_letter_head",
+  "fieldtype": "Link",
+  "label": "POS Letter Head",
+  "options": "Letter Head",
+  "insert_after": "posa_print_format",
+  "hidden": 1,
+  "read_only": 1,
+  "allow_on_submit": 1,
+  "no_copy": 1,
+  "print_hide": 1,
+  "description": "Letter head selected from the POS Profile when this invoice was created.",
+  "module": "POS Next",
+  "name": "Sales Invoice-posa_letter_head"
  }
 ]

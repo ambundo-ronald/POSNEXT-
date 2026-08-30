@@ -23,7 +23,7 @@
  * @module translation
  */
 import { createResource } from "frappe-ui"
-import { App, ref } from "vue"
+import { type App, ref } from "vue"
 import { call } from "./apiWrapper"
 import { translationCache } from "./offline/translationCache"
 import { logger } from "./logger"
@@ -42,6 +42,8 @@ declare global {
     translatedMessages?: Messages
     /** Language switcher function */
     $changeLanguage?: typeof changeLanguage
+    /** Frappe boot metadata */
+    frappe?: { boot?: { lang?: string } }
   }
 }
 
@@ -122,7 +124,7 @@ const getLocale = (): string => {
   if (typeof window === "undefined") return FALLBACK_LOCALE
 
   return (
-    (window as any)?.frappe?.boot?.lang?.toLowerCase() ||
+    window.frappe?.boot?.lang?.toLowerCase() ||
     window.localStorage?.getItem("pos_next_language")?.toLowerCase() ||
     FALLBACK_LOCALE
   )

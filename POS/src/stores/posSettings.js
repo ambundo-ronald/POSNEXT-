@@ -55,6 +55,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		// Printing
 		allow_print_last_invoice: 0,
 		silent_print: 0,
+		print_credit_sale_copies: 1,
 		// Delivery
 		use_delivery_charges: 0,
 		auto_set_delivery_charges: 0,
@@ -107,7 +108,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		creditSaleUsers.value.filter((row) => Boolean(row.enabled ?? 1) && row.user),
 	)
 	const allowCreditSale = computed(() => {
-		if (!Boolean(settings.value.allow_credit_sale)) return false
+		if (!settings.value.allow_credit_sale) return false
 		if (settings.value.credit_sale_allowed_for_user !== undefined) {
 			return Boolean(settings.value.credit_sale_allowed_for_user)
 		}
@@ -344,6 +345,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			fetch_coupon: 0,
 			allow_print_last_invoice: 0,
 			silent_print: 0,
+			print_credit_sale_copies: 1,
 			use_delivery_charges: 0,
 			auto_set_delivery_charges: 0,
 			use_limit_search: 0,
@@ -354,7 +356,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			input_qty: 0,
 			allow_negative_stock: 0,
 			enable_sales_persons: "Disabled",
-				enable_item_sales_person_commission: 0,
+			enable_item_sales_person_commission: 0,
 		}
 		isLoaded.value = false
 	}
@@ -385,7 +387,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	 * @returns {boolean} - True if stock validation should prevent negative stock
 	 */
 	function shouldEnforceStockValidation() {
-		return isEnabled.value && !Boolean(settings.value.allow_negative_stock)
+		return isEnabled.value && !settings.value.allow_negative_stock
 	}
 
 	/**

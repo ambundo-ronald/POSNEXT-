@@ -263,7 +263,9 @@ const filteredCountries = computed(() => {
 // Country & Territory Methods
 // =============================================================================
 
-const handleFlagError = (e) => (e.target.style.display = "none")
+function handleFlagError(e) {
+	e.target.style.display = "none"
+}
 
 const selectCountry = (country) => {
 	selectedCountryCode.value = country.isd
@@ -367,8 +369,12 @@ const createListResource = (doctype, onSuccess) =>
 		onError: (err) => log.error(`Error loading ${doctype}`, err),
 	})
 
-const customerGroupsResource = createListResource("Customer Group", (names) => (customerGroups.value = names))
-const territoriesResource = createListResource("Territory", (names) => (territories.value = names))
+const customerGroupsResource = createListResource("Customer Group", (names) => {
+	customerGroups.value = names
+})
+const territoriesResource = createListResource("Territory", (names) => {
+	territories.value = names
+})
 
 const posProfileResource = createResource({
 	url: "frappe.client.get_value",
@@ -443,7 +449,11 @@ const resetForm = () => {
 
 watch(
 	() => props.initialName,
-	(name) => name && (customerData.value.customer_name = name)
+	(name) => {
+		if (name) {
+			customerData.value.customer_name = name
+		}
+	}
 )
 
 watch(

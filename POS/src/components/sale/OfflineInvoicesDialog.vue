@@ -303,7 +303,7 @@ function formatDate(timestamp) {
 	if (diffInSeconds < 86400)
 		return __('{0} hours ago', [Math.floor(diffInSeconds / 3600)])
 
-	return date.toLocaleDateString() + " " + date.toLocaleTimeString()
+	return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
 }
 
 function viewDetails(invoice) {

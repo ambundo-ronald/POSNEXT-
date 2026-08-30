@@ -554,7 +554,7 @@ watch(show, async (val) => {
 		const dialogs = document.querySelectorAll('.modal-container, .modal-backdrop')
 		dialogs.forEach(dialog => {
 			const title = dialog.querySelector('[class*="title"]')
-			if (title && title.textContent?.includes('Invoice Details')) {
+			if (title?.textContent?.includes('Invoice Details')) {
 				dialog.style.zIndex = '400'
 			}
 		})
@@ -571,7 +571,7 @@ async function loadInvoiceDetails() {
 		})
 
 		// Map server 'qty' to 'quantity' for internal consistency
-		if (result && result.items) {
+		if (result?.items) {
 			result.items = result.items.map((item) => ({
 				...item,
 				quantity: item.qty,

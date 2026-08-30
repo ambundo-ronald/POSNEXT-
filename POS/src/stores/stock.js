@@ -184,7 +184,9 @@ export const useStockStore = defineStore('stock', () => {
 		reserve,
 		update,
 		refresh,
-		setWarehouse: (targetWarehouse) => warehouse.value = targetWarehouse,
+		setWarehouse(targetWarehouse) {
+			warehouse.value = targetWarehouse
+		},
 		clear: () => reserved.value.clear(),
 		reset: () => { server.value.clear(); reserved.value.clear() }
 	}
