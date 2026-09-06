@@ -2622,12 +2622,21 @@ async function handleInvoicePaymentReconciled() {
 // Centralized print handler - uses printInvoice.js utilities
 async function handlePrintInvoice(invoiceData, options = {}) {
 	try {
-		// If invoiceData is a full document with items, use printInvoice directly
-		if (invoiceData.items && Array.isArray(invoiceData.items)) {
-			await printInvoice(invoiceData, null, null, options)
+		if (!invoiceData?.name) {
+			throw new Error("Invoice name is required for printing")
+		}
+
+		const hasStoredPrintSettings = Boolean(
+			invoiceData.posa_print_format || invoiceData.posa_letter_head,
+		)
+		if (invoiceData.items && Array.isArray(invoiceData.items) && hasStoredPrintSettings) {
+			await printInvoice(
+				invoiceData,
+				invoiceData.posa_print_format || null,
+				invoiceData.posa_letter_head || null,
+				options,
+			)
 		} else {
-			// If it's just an invoice object with name, fetch and print
-			// printInvoiceByName will automatically fetch the print format from the invoice's POS Profile
 			await printInvoiceByName(invoiceData.name, null, null, options)
 		}
 	} catch (error) {

@@ -22,7 +22,8 @@ export async function printInvoice(
 		}
 
 		const doctype = invoiceData.doctype || "Sales Invoice"
-		const format = printFormat || "POS Next Receipt"
+		const format = printFormat || invoiceData.posa_print_format || "POS Next Receipt"
+		const resolvedLetterhead = letterhead || invoiceData.posa_letter_head || null
 
 		const copies = getPrintCopyCount(invoiceData, options)
 
@@ -32,14 +33,14 @@ export async function printInvoice(
 				doctype: doctype,
 				name: invoiceData.name,
 				format: format,
-				no_letterhead: letterhead ? 0 : 1,
+				no_letterhead: resolvedLetterhead ? 0 : 1,
 				_lang: "en",
 				trigger_print: 1,
 				_t: `${Date.now()}-${copyIndex}`, // Cache buster to force fresh print format
 			})
 
-			if (letterhead) {
-				params.append("letterhead", letterhead)
+			if (resolvedLetterhead) {
+				params.append("letterhead", resolvedLetterhead)
 			}
 
 			// Open PDF in new window - browser will handle print dialog
