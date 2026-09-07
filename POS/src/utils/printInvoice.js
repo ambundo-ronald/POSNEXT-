@@ -526,10 +526,10 @@ export async function printInvoiceByName(
 			throw new Error("Invoice not found")
 		}
 
-		let resolvedPrintFormat = printFormat || invoiceDoc.posa_print_format
-		let resolvedLetterhead = letterhead || invoiceDoc.posa_letter_head
+		let resolvedPrintFormat = printFormat
+		let resolvedLetterhead = letterhead
 
-		// If the invoice does not have stored print settings, fall back to its POS Profile.
+		// POSNext should follow the invoice POS Profile's current print settings.
 		if (!resolvedPrintFormat && invoiceDoc.pos_profile) {
 			try {
 				const posProfileDoc = await call("frappe.client.get", {

@@ -2626,19 +2626,7 @@ async function handlePrintInvoice(invoiceData, options = {}) {
 			throw new Error("Invoice name is required for printing")
 		}
 
-		const hasStoredPrintSettings = Boolean(
-			invoiceData.posa_print_format || invoiceData.posa_letter_head,
-		)
-		if (invoiceData.items && Array.isArray(invoiceData.items) && hasStoredPrintSettings) {
-			await printInvoice(
-				invoiceData,
-				invoiceData.posa_print_format || null,
-				invoiceData.posa_letter_head || null,
-				options,
-			)
-		} else {
-			await printInvoiceByName(invoiceData.name, null, null, options)
-		}
+		await printInvoiceByName(invoiceData.name, null, null, options)
 	} catch (error) {
 		log.error("Error printing invoice:", error)
 		window.frappe?.msgprint({
