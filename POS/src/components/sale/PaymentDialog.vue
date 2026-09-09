@@ -786,25 +786,31 @@
 											: entry.type }}
 									</div>
 									<input
-										v-model="entry.reference_no"
+										:value="entry.reference_no"
 										type="text"
 										maxlength="140"
 										:placeholder="__('Reference code (optional)')"
-										:disabled="!canEditPaymentDetails(entry)"
-										class="mt-2 w-full sm:w-56 px-3 py-1.5 text-xs text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+										:readonly="!canEditPaymentDetails(entry)"
+										class="mt-2 w-full sm:w-56 px-3 py-1.5 text-xs text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent read-only:bg-gray-50 read-only:text-gray-500 read-only:cursor-not-allowed"
+										@click.stop
+										@keydown.stop
+										@input="updatePaymentReference(index, $event.target.value)"
 										@blur="normalizePaymentReference(index)"
 									/>
 								</div>
 							</div>
 							<div class="flex items-center justify-end gap-4">
 								<input
-									v-model.number="entry.amount"
+									:value="entry.amount"
 									type="number"
 									inputmode="decimal"
 									step="0.01"
 									min="0"
-									:disabled="!canEditPaymentDetails(entry)"
-									class="w-32 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+									:readonly="!canEditPaymentDetails(entry)"
+									class="w-32 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent read-only:bg-gray-50 read-only:text-gray-500 read-only:cursor-not-allowed"
+									@click.stop
+									@keydown.stop
+									@input="updatePaymentAmount(index, $event.target.value)"
 									@focus="$event.target.select()"
 									@blur="normalizePaymentAmount(index)"
 								/>
@@ -1547,6 +1553,7 @@ function addMpesaPayment(payment) {
 		mpesa_payment_name: payment.name,
 		mpesa_transaction_id: payment.transid || payment.name,
 		reference_no: payment.transid || payment.name,
+		locked: true,
 	})
 }
 
@@ -2186,6 +2193,7 @@ function applyCustomerCredit() {
 		amount: Number.parseFloat(creditToApply.toFixed(2)),
 		type: "Credit",
 		is_customer_credit: true,
+		locked: true,
 		credit_details: customerCredit.value.map(credit => ({
 			...credit,
 			credit_to_redeem: 0  // Will be calculated on backend
@@ -2237,6 +2245,7 @@ function getPaymentAmount(entry) {
 
 function isPaymentEntryLocked(entry) {
 	return Boolean(
+		entry?.locked ||
 		(entry?.is_mpesa && entry?.mpesa_payment_name) ||
 		(entry?.is_sms_enabler && entry?.sms_payment_name),
 	)
@@ -2244,6 +2253,30 @@ function isPaymentEntryLocked(entry) {
 
 function canEditPaymentDetails(entry) {
 	return Boolean(entry) && !entry.is_customer_credit && !isPaymentEntryLocked(entry)
+}
+
+function updatePaymentReference(index, value) {
+	const entry = paymentEntries.value[index]
+	if (!canEditPaymentDetails(entry)) {
+		return
+	}
+
+	entry.reference_no = value || ""
+}
+
+function updatePaymentAmount(index, value) {
+	const entry = paymentEntries.value[index]
+	if (!canEditPaymentDetails(entry)) {
+		return
+	}
+
+	if (value === "") {
+		entry.amount = ""
+		return
+	}
+
+	const amount = Number.parseFloat(value)
+	entry.amount = Number.isFinite(amount) && amount >= 0 ? amount : 0
 }
 
 function normalizePaymentReference(index) {
