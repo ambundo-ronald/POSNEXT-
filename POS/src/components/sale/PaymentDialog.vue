@@ -786,34 +786,52 @@
 											: entry.type }}
 									</div>
 									<input
+										v-if="canEditPaymentDetails(entry)"
 										:value="entry.reference_no"
 										type="text"
 										maxlength="140"
+										autocomplete="off"
 										:placeholder="__('Reference code (optional)')"
-										:readonly="!canEditPaymentDetails(entry)"
-										class="mt-2 w-full sm:w-56 px-3 py-1.5 text-xs text-gray-700 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent read-only:bg-gray-50 read-only:text-gray-500 read-only:cursor-not-allowed"
+										class="mt-2 w-full sm:w-56 px-3 py-1.5 text-xs text-gray-700 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+										@pointerdown.stop
+										@mousedown.stop
 										@click.stop
 										@keydown.stop
 										@input="updatePaymentReference(index, $event.target.value)"
 										@blur="normalizePaymentReference(index)"
 									/>
+									<div
+										v-else-if="entry.reference_no"
+										class="mt-2 w-full sm:w-56 px-3 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg bg-gray-50"
+									>
+										{{ entry.reference_no }}
+									</div>
 								</div>
 							</div>
 							<div class="flex items-center justify-end gap-4">
 								<input
+									v-if="canEditPaymentDetails(entry)"
 									:value="entry.amount"
 									type="number"
 									inputmode="decimal"
 									step="0.01"
 									min="0"
-									:readonly="!canEditPaymentDetails(entry)"
-									class="w-32 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent read-only:bg-gray-50 read-only:text-gray-500 read-only:cursor-not-allowed"
+									autocomplete="off"
+									class="w-32 px-3 py-1 text-end font-bold text-gray-900 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+									@pointerdown.stop
+									@mousedown.stop
 									@click.stop
 									@keydown.stop
 									@input="updatePaymentAmount(index, $event.target.value)"
 									@focus="$event.target.select()"
 									@blur="normalizePaymentAmount(index)"
 								/>
+								<div
+									v-else
+									class="w-32 px-3 py-1 text-end font-bold text-gray-500 border border-gray-200 rounded-lg bg-gray-50"
+								>
+									{{ formatCurrency(entry.amount) }}
+								</div>
 								<button
 									@click="removePaymentEntry(index)"
 									class="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all sm:opacity-0 sm:group-hover:opacity-100"
