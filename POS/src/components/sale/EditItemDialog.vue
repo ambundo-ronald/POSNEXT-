@@ -504,7 +504,7 @@ const canEditRate = computed(() =>
 	),
 )
 const showItemSalesPersonCommission = computed(() =>
-	settingsStore.enableItemSalesPersonCommission && cartStore.isItemizedSalesPersonCommissionMode,
+	settingsStore.enableItemSalesPersonCommission && settingsStore.enableSalesPersons,
 )
 const missingItemSalesPerson = computed(() => {
 	if (!showItemSalesPersonCommission.value) {
