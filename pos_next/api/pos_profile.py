@@ -368,29 +368,24 @@ def update_warehouse(pos_profile, warehouse):
 
 @frappe.whitelist()
 def get_sales_persons(pos_profile=None):
-	"""Get all active individual sales persons (not groups) for POS"""
-	try:
-		filters = {
-			"enabled": 1,
-			"is_group": 0  # Only get individual sales persons, not group nodes
-		}
+	"""Return active sales persons for a POS Profile assigned to the current user."""
+	if not pos_profile:
+		frappe.throw(_("POS Profile is required"))
 
-		# If company is specified via POS Profile, filter by company (if Sales Person has company field)
-		if pos_profile:
-			company = frappe.db.get_value("POS Profile", pos_profile, "company")
-			# Check if Sales Person doctype has a company field
-			if frappe.db.has_column("Sales Person", "company") and company:
-				filters["company"] = company
+	if not frappe.db.exists(
+		"POS Profile User", {"parent": pos_profile, "user": frappe.session.user}
+	):
+		frappe.throw(_("You don't have access to this POS Profile"), frappe.PermissionError)
 
-		sales_persons = frappe.get_list(
-			"Sales Person",
-			filters=filters,
-			fields=["name", "sales_person_name", "commission_rate", "employee"],
-			order_by="sales_person_name",
-			limit_page_length=0
-		)
+	company = frappe.db.get_value("POS Profile", pos_profile, "company")
+	filters = {"enabled": 1, "is_group": 0}
+	if company and frappe.db.has_column("Sales Person", "company"):
+		filters["company"] = company
 
-		return sales_persons
-	except Exception as e:
-		frappe.log_error(frappe.get_traceback(), "Get Sales Persons Error")
-		return []
+	return frappe.get_all(
+		"Sales Person",
+		filters=filters,
+		fields=["name", "sales_person_name", "commission_rate"],
+		order_by="sales_person_name",
+		limit_page_length=0,
+	)

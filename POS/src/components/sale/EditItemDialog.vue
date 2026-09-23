@@ -506,8 +506,9 @@ const canEditRate = computed(() =>
 const showItemSalesPersonCommission = computed(() =>
 	settingsStore.enableItemSalesPersonCommission && settingsStore.enableSalesPersons,
 )
+const requiresItemSalesPerson = computed(() => showItemSalesPersonCommission.value && cartStore.isItemizedSalesPersonCommissionMode)
 const missingItemSalesPerson = computed(() => {
-	if (!showItemSalesPersonCommission.value) {
+	if (!requiresItemSalesPerson.value) {
 		return false
 	}
 	if (itemSalesPersonMode.value === "split") {
@@ -955,11 +956,17 @@ function formatCurrency(amount) {
 }
 
 function updateItem() {
-	if (missingItemSalesPerson.value) {
+	const assigningSalesPerson = showItemSalesPersonCommission.value && (
+		itemSalesPersonMode.value === "split" || Boolean(localSalesPerson.value)
+	)
+	if (missingItemSalesPerson.value || (assigningSalesPerson && itemSalesPersonMode.value === "split" && !hasValidSplitAllocations.value)) {
 		showWarning(itemSalesPersonMode.value === "split"
 			? __("Allocate this item fully across sales persons before updating.")
 			: __("Select a sales person for this item before updating."))
 		return
+	}
+	if (assigningSalesPerson && !cartStore.isItemizedSalesPersonCommissionMode) {
+		cartStore.setSalesPersonCommissionMode("itemized")
 	}
 
 	const splitAllocations = itemSalesPersonMode.value === "split" ? normalizedSplitRows.value : []
