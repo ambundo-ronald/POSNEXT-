@@ -379,7 +379,11 @@ def get_sales_persons(pos_profile=None):
 
 	company = frappe.db.get_value("POS Profile", pos_profile, "company")
 	filters = {"enabled": 1, "is_group": 0}
-	if company and frappe.db.has_column("Sales Person", "company"):
+	if (
+		company
+		and frappe.db.has_column("Sales Person", "company")
+		and frappe.db.count("Sales Person", {**filters, "company": company})
+	):
 		filters["company"] = company
 
 	return frappe.get_all(

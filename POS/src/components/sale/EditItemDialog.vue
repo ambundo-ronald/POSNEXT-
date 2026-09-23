@@ -564,6 +564,20 @@ function loadSalesPersons() {
 	salesPersonsResource.fetch()
 }
 
+watch(
+	() => [show.value, showItemSalesPersonCommission.value, props.posProfile],
+	([isOpen, commissionEnabled, profile], previous = []) => {
+		const previousProfile = previous[2]
+		if (profile !== previousProfile) {
+			salesPersons.value = []
+		}
+		if (isOpen && commissionEnabled && profile) {
+			loadSalesPersons()
+		}
+	},
+	{ immediate: true },
+)
+
 // Initialize local state when item changes
 watch(
 	() => props.item,
