@@ -368,14 +368,14 @@ def update_warehouse(pos_profile, warehouse):
 
 @frappe.whitelist()
 def get_sales_persons(pos_profile=None):
-	"""Return active sales persons for a POS Profile assigned to the current user."""
+	"""Return active sales persons belonging to the POS Profile company."""
 	if not pos_profile:
 		frappe.throw(_("POS Profile is required"))
+	if not frappe.db.exists("POS Profile", pos_profile):
+		frappe.throw(_("POS Profile {0} does not exist").format(pos_profile))
 
 	has_profile_access = bool(
-		frappe.db.exists(
-			"POS Profile User", {"parent": pos_profile, "user": frappe.session.user}
-		)
+		frappe.db.exists("POS Profile User", {"parent": pos_profile, "user": frappe.session.user})
 	)
 	has_open_shift = bool(
 		frappe.db.exists(
@@ -392,12 +392,26 @@ def get_sales_persons(pos_profile=None):
 	if not (has_profile_access or has_open_shift or is_manager):
 		frappe.throw(_("You don't have access to this POS Profile"), frappe.PermissionError)
 
-	filters = {"enabled": 1, "is_group": 0}
+	company = frappe.db.get_value("POS Profile", pos_profile, "company")
+	if not company:
+		return []
 
-	return frappe.get_all(
-		"Sales Person",
-		filters=filters,
-		fields=["name", "sales_person_name", "commission_rate"],
-		order_by="sales_person_name",
-		limit_page_length=0,
+	return frappe.db.sql(
+		"""
+		SELECT DISTINCT
+			sp.name,
+			sp.sales_person_name,
+			sp.commission_rate
+		FROM `tabSales Person` sp
+		LEFT JOIN `tabEmployee` employee ON employee.name = sp.employee
+		WHERE sp.enabled = 1
+			AND sp.is_group = 0
+			AND (
+				sp.posa_company = %(company)s
+				OR (IFNULL(sp.posa_company, '') = '' AND employee.company = %(company)s)
+			)
+		ORDER BY sp.sales_person_name
+		""",
+		{"company": company},
+		as_dict=True,
 	)

@@ -990,5 +990,19 @@
   "description": "Letter head selected from the POS Profile when this invoice was created.",
   "module": "POS Next",
   "name": "Sales Invoice-posa_letter_head"
+ },
+ {
+  "doctype": "Custom Field",
+  "dt": "Sales Person",
+  "fieldname": "posa_company",
+  "fieldtype": "Link",
+  "label": "Company",
+  "options": "Company",
+  "insert_after": "employee",
+  "in_list_view": 1,
+  "in_standard_filter": 1,
+  "description": "Company this sales person belongs to. POS Next only shows the sales person on POS Profiles for this company.",
+  "module": "POS Next",
+  "name": "Sales Person-posa_company"
  }
 ]

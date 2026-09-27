@@ -187,6 +187,8 @@ def _normalize_item_sales_person_allocations(item, fields, commission_rate_overr
             frappe.throw(_("Sales Person {0} does not exist.").format(sales_person))
 
         percentage = flt(row.get("allocated_percentage"), 4)
+        if percentage < 0 or percentage > 100:
+            frappe.throw(_("Each sales person share for {0} must be between 0 and 100%.").format(item_label))
         sales_amount = flt(line_amount * percentage / 100, 2)
         commission_amount = flt(commission_pool * percentage / 100, 2)
         if index == len(allocations) - 1:

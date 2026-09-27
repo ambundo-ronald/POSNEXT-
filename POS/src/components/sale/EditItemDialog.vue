@@ -313,7 +313,7 @@
 									</label>
 									<input
 										v-model.number="row.share"
-										@input="normalizeSplitRows"
+										@blur="normalizeSplitRow(row)"
 										type="number"
 										min="0"
 										:max="splitAllocationMode === 'percentage' ? 100 : commissionAmount"
@@ -817,11 +817,14 @@ function handleSplitSalesPersonChange(row) {
 	row.sales_person_name = person?.sales_person_name || person?.name || row.sales_person || ""
 }
 
+function normalizeSplitRow(row) {
+	const share = Number.parseFloat(row.share)
+	const maximum = splitAllocationMode.value === "percentage" ? 100 : commissionAmount.value
+	row.share = Number.isFinite(share) ? Math.min(maximum, Math.max(0, share)) : 0
+}
+
 function normalizeSplitRows() {
-	for (const row of splitRows.value) {
-		const share = Number.parseFloat(row.share || 0) || 0
-		row.share = Math.max(0, share)
-	}
+	for (const row of splitRows.value) normalizeSplitRow(row)
 }
 
 function handleSplitAllocationModeChange() {
