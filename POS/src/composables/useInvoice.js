@@ -616,20 +616,26 @@ export function useInvoice() {
 		if (!Array.isArray(allocations) || !allocations.length) return
 
 		const rate = Number.parseFloat(item.posa_commission_rate || 0) || 0
-		let allocatedAmount = 0
+		const commissionPool = Number((netAmount * rate / 100).toFixed(2))
+		let allocatedSales = 0
+		let allocatedCommission = 0
 		const normalized = allocations.map((row, index) => {
 			const percentage = Number.parseFloat(row.allocated_percentage || 0) || 0
-			let allocated = Number((netAmount * percentage / 100).toFixed(2))
+			let salesAmount = Number((netAmount * percentage / 100).toFixed(2))
+			let commissionAmount = Number((commissionPool * percentage / 100).toFixed(2))
 			if (index === allocations.length - 1) {
-				allocated = Number((netAmount - allocatedAmount).toFixed(2))
+				salesAmount = Number((netAmount - allocatedSales).toFixed(2))
+				commissionAmount = Number((commissionPool - allocatedCommission).toFixed(2))
 			}
-			allocatedAmount += allocated
+			allocatedSales += salesAmount
+			allocatedCommission += commissionAmount
 			return {
 				...row,
 				allocated_percentage: percentage,
-				allocated_amount: allocated,
+				sales_amount: salesAmount,
+				allocated_amount: commissionAmount,
 				commission_rate: rate,
-				commission_amount: Number((allocated * rate / 100).toFixed(2)),
+				commission_amount: commissionAmount,
 			}
 		})
 		item.posa_sales_person_allocations = JSON.stringify(normalized)
@@ -637,7 +643,6 @@ export function useInvoice() {
 			normalized.reduce((sum, row) => sum + (Number.parseFloat(row.commission_amount || 0) || 0), 0).toFixed(2),
 		)
 	}
-
 	function addPayment(payment) {
 		const amount = Number.parseFloat(payment.amount) || 0
 		payments.value.push({

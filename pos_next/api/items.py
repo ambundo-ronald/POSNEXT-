@@ -374,12 +374,14 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
 	commission_rule = get_commission_rate(item_code, company, warehouse)
 	if commission_rule:
 		res["posa_commission_rate"] = flt(commission_rule["sales_person_percentage"])
+		res["posa_max_commission_rate"] = res["posa_commission_rate"]
 		res["posa_company_percentage"] = flt(commission_rule["company_percentage"])
 		res["posa_commission_configured"] = 1
 	else:
 		res["posa_commission_rate"] = flt(item.get("posa_commission_rate") or 0)
 		res["posa_company_percentage"] = flt(100 - res["posa_commission_rate"])
 		res["posa_commission_configured"] = 0
+		res["posa_max_commission_rate"] = 100
 
 	return res
 
@@ -1309,6 +1311,7 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 			commission_rule = commission_rate_map.get(item["item_code"])
 			if commission_rule:
 				item["posa_commission_rate"] = flt(commission_rule["sales_person_percentage"])
+				item["posa_max_commission_rate"] = item["posa_commission_rate"]
 				item["posa_company_percentage"] = flt(commission_rule["company_percentage"])
 				item["posa_commission_configured"] = 1
 

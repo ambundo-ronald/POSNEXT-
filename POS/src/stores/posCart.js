@@ -863,7 +863,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				allocations.forEach((row) => addAmount(
 					row.sales_person,
 					row.sales_person_name || row.sales_person,
-					Number.parseFloat(row.allocated_amount || 0) || 0,
+					Number.parseFloat(row.sales_amount ?? row.allocated_amount ?? 0) || 0,
 				))
 				continue
 			}

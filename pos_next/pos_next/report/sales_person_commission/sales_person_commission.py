@@ -103,7 +103,12 @@ def append_allocation(data, row, allocation, sales_person_filter=None):
 		"sales_person": sales_person,
 		"item_code": row.item_code,
 		"item_name": row.item_name,
-		"allocated_sales": flt(allocation.get("allocated_amount"), 2),
+		"allocated_sales": flt(
+			allocation.get("sales_amount")
+			if allocation.get("sales_amount") is not None
+			else allocation.get("allocated_amount"),
+			2,
+		),
 		"allocated_percentage": flt(allocation.get("allocated_percentage"), 4),
 		"commission_rate": flt(allocation.get("commission_rate"), 4),
 		"commission_amount": flt(allocation.get("commission_amount"), 2),

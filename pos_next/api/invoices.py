@@ -167,65 +167,44 @@ def _normalize_item_sales_person_allocations(item, fields, commission_rate_overr
 
     item_label = item.get("item_name") or item.get("item_code")
     line_amount = flt(item.get("amount"), 2)
-    item_commission_rate = flt(
-        commission_rate_override if commission_rate_override is not None else item.get("posa_commission_rate"),
-        4,
-    )
+    commission_rate = flt(commission_rate_override if commission_rate_override is not None else item.get("posa_commission_rate"), 4)
     total_percentage = flt(sum(flt(row.get("allocated_percentage"), 4) for row in allocations), 4)
-
     if not line_amount:
         return []
     if abs(total_percentage - 100) > 0.01:
-        frappe.throw(
-            _("Sales person split for {0} must total 100%. Currently {1}%.").format(
-                item_label, total_percentage
-            ),
-            title=_("Invalid Sales Person Split"),
-        )
+        frappe.throw(_("Sales person split for {0} must total 100%. Currently {1}%.").format(item_label, total_percentage), title=_("Invalid Sales Person Split"))
+    if commission_rate < 0 or commission_rate > 100:
+        frappe.throw(_("Commission rate for {0} must be between 0 and 100.").format(item_label))
 
     normalized = []
-    allocated_amount = 0
-    allocated_percentage = 0
+    allocated_sales = allocated_commission = allocated_percentage = 0
+    commission_pool = flt(line_amount * commission_rate / 100, 2)
     for index, row in enumerate(allocations):
         sales_person = cstr(row.get("sales_person")).strip()
         if not sales_person:
-            frappe.throw(
-                _("Select a sales person for every split row in {0}.").format(item_label),
-                title=_("Sales Person Required"),
-            )
+            frappe.throw(_("Select a sales person for every split row in {0}.").format(item_label), title=_("Sales Person Required"))
         if not frappe.db.exists("Sales Person", sales_person):
             frappe.throw(_("Sales Person {0} does not exist.").format(sales_person))
 
-        is_last = index == len(allocations) - 1
         percentage = flt(row.get("allocated_percentage"), 4)
-        amount = flt(line_amount * percentage / 100, 2)
-        if is_last:
+        sales_amount = flt(line_amount * percentage / 100, 2)
+        commission_amount = flt(commission_pool * percentage / 100, 2)
+        if index == len(allocations) - 1:
             percentage = flt(100 - allocated_percentage, 4)
-            amount = flt(line_amount - allocated_amount, 2)
-
-        commission_rate = flt(
-            item_commission_rate
-            if commission_rate_override is not None
-            else row.get("commission_rate") if row.get("commission_rate") is not None else item_commission_rate,
-            4,
-        )
-        if commission_rate < 0 or commission_rate > 100:
-            frappe.throw(
-                _("Commission rate for {0} must be between 0 and 100.").format(item_label)
-            )
-
-        normalized.append(
-            {
-                "sales_person": sales_person,
-                "sales_person_name": cstr(row.get("sales_person_name")).strip() or sales_person,
-                "allocated_percentage": percentage,
-                "allocated_amount": amount,
-                "commission_rate": commission_rate,
-                "commission_amount": flt(amount * commission_rate / 100, 2),
-            }
-        )
+            sales_amount = flt(line_amount - allocated_sales, 2)
+            commission_amount = flt(commission_pool - allocated_commission, 2)
+        normalized.append({
+            "sales_person": sales_person,
+            "sales_person_name": cstr(row.get("sales_person_name")).strip() or sales_person,
+            "allocated_percentage": percentage,
+            "sales_amount": sales_amount,
+            "allocated_amount": commission_amount,
+            "commission_rate": commission_rate,
+            "commission_amount": commission_amount,
+        })
         allocated_percentage = flt(allocated_percentage + percentage, 4)
-        allocated_amount = flt(allocated_amount + amount, 2)
+        allocated_sales = flt(allocated_sales + sales_amount, 2)
+        allocated_commission = flt(allocated_commission + commission_amount, 2)
 
     if fields.get("allocations"):
         item.posa_sales_person_allocations = json.dumps(normalized, separators=(",", ":"))
@@ -233,9 +212,7 @@ def _normalize_item_sales_person_allocations(item, fields, commission_rate_overr
         item.posa_sales_person = normalized[0]["sales_person"]
     if fields.get("commission_amount"):
         item.posa_commission_amount = flt(sum(row["commission_amount"] for row in normalized), 2)
-
     return normalized
-
 
 def apply_item_sales_person_commissions(invoice_doc, require_sales_person=False):
     """Validate and calculate item-level sales person commission fields."""
@@ -252,12 +229,20 @@ def apply_item_sales_person_commissions(invoice_doc, require_sales_person=False)
         commission_rule = get_commission_rate(
             item.get("item_code"), invoice_doc.get("company"), item.get("warehouse")
         )
-        configured_rate = None
+        commission_rate = flt(item.get("posa_commission_rate"), 4)
         if commission_rule:
-            configured_rate = flt(commission_rule.get("sales_person_percentage"), 4)
-            item.posa_commission_rate = configured_rate
+            maximum_rate = flt(commission_rule.get("sales_person_percentage"), 4)
+            if item.get("posa_commission_rate") is None:
+                commission_rate = maximum_rate
+            if commission_rate > maximum_rate + 0.0001:
+                frappe.throw(
+                    _("Commission rate for {0} cannot exceed the configured maximum of {1}%.").format(
+                        item.get("item_name") or item.get("item_code"), maximum_rate
+                    )
+                )
+            item.posa_commission_rate = commission_rate
         allocations = _normalize_item_sales_person_allocations(
-            item, fields, commission_rate_override=configured_rate
+            item, fields, commission_rate_override=commission_rate
         )
         sales_person = cstr(item.get("posa_sales_person")).strip()
         if require_sales_person and not allocations and not sales_person:
@@ -299,7 +284,10 @@ def build_sales_team_from_item_commissions(invoice_doc):
         allocations = _parse_item_sales_person_allocations(item)
         if allocations:
             for row in allocations:
-                add_amount(row.get("sales_person"), row.get("allocated_amount"))
+                add_amount(
+                    row.get("sales_person"),
+                    row.get("sales_amount") if row.get("sales_amount") is not None else row.get("allocated_amount"),
+                )
             continue
         add_amount(item.get("posa_sales_person"), item.get("amount"))
 

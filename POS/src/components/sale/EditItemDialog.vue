@@ -242,10 +242,9 @@
 							<div class="relative">
 								<input
 									v-model.number="localCommissionRate"
-									:readonly="commissionRateLocked"
 									type="number"
 									min="0"
-									max="100"
+									:max="commissionMaxRate"
 									step="0.01"
 									class="w-full border border-gray-300 rounded-lg px-3 py-2 pe-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 								/>
@@ -263,10 +262,9 @@
 								<div class="relative">
 									<input
 										v-model.number="localCommissionRate"
-										:readonly="commissionRateLocked"
 										type="number"
 										min="0"
-										max="100"
+										:max="commissionMaxRate"
 										step="0.01"
 										class="w-full border border-gray-300 rounded-lg px-3 py-2 pe-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 									/>
@@ -318,7 +316,7 @@
 										@input="normalizeSplitRows"
 										type="number"
 										min="0"
-										:max="splitAllocationMode === 'percentage' ? 100 : calculatedTotal"
+										:max="splitAllocationMode === 'percentage' ? 100 : commissionAmount"
 										step="0.01"
 										class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 									/>
@@ -345,9 +343,9 @@
 								{{ __('Add Sales Person') }}
 							</button>
 							<div class="text-xs text-gray-600 text-end">
-								<div>{{ __('Allocated: {0}', [formatCurrency(splitAllocatedAmount)]) }}</div>
+								<div>{{ __('Commission Allocated: {0}', [formatCurrency(splitAllocatedAmount)]) }}</div>
 								<div :class="splitBalanceAmount === 0 ? 'text-green-600' : 'text-orange-600'">
-									{{ __('Balance: {0}', [formatCurrency(splitBalanceAmount)]) }}
+									{{ __('Commission Balance: {0}', [formatCurrency(splitBalanceAmount)]) }}
 								</div>
 							</div>
 						</div>
@@ -433,7 +431,7 @@ import { usePOSCartStore } from "@/stores/posCart"
 import { useSerialNumberStore } from "@/stores/serialNumber"
 import { getItemStock } from "@/utils/stockValidator"
 import { formatCurrency as formatCurrencyUtil, getCurrencySymbol } from "@/utils/currency"
-import { Button, Dialog, createResource } from "frappe-ui"
+import { Button, Dialog } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 
 const { showSuccess, showError, showWarning } = useToast()
@@ -520,7 +518,12 @@ const missingItemSalesPerson = computed(() => {
 	}
 	return !localSalesPerson.value
 })
-const commissionRateLocked = computed(() => Boolean(localItem.value?.posa_commission_configured))
+const commissionMaxRate = computed(() => {
+	if (!localItem.value?.posa_commission_configured) return 100
+	return Number.parseFloat(
+		localItem.value.posa_max_commission_rate ?? localItem.value.posa_commission_rate ?? 100,
+	) || 0
+})
 const commissionAmount = computed(() => {
 	const rate = Number.parseFloat(localCommissionRate.value || 0) || 0
 	return Number(((calculatedTotal.value || 0) * rate / 100).toFixed(2))
@@ -531,7 +534,7 @@ const splitAllocatedAmount = computed(() =>
 	Number(normalizedSplitRows.value.reduce((sum, row) => sum + row.allocated_amount, 0).toFixed(2)),
 )
 const splitBalanceAmount = computed(() =>
-	Number(((calculatedTotal.value || 0) - splitAllocatedAmount.value).toFixed(2)),
+	Number((commissionAmount.value - splitAllocatedAmount.value).toFixed(2)),
 )
 const hasValidSplitAllocations = computed(() => {
 	const rows = normalizedSplitRows.value
@@ -541,35 +544,29 @@ const hasValidSplitAllocations = computed(() => {
 	return Math.abs(splitBalanceAmount.value) <= 0.01
 })
 
-const salesPersonsResource = createResource({
-	url: "pos_next.api.pos_profile.get_sales_persons",
-	makeParams() {
-		return {
-			pos_profile: props.posProfile,
-		}
-	},
-	auto: false,
-	onSuccess(data) {
-		salesPersons.value = data?.message || data || []
-		loadingSalesPersons.value = false
-	},
-	onError(error) {
-		console.error("Error loading sales persons:", error)
-		salesPersons.value = []
-		loadingSalesPersons.value = false
-		showError(__("Unable to load sales persons. Please refresh and try again."))
-	},
-})
-
-function loadSalesPersons() {
-	if (!props.posProfile || loadingSalesPersons.value || salesPersons.value.length) {
-		return
-	}
+async function loadSalesPersons() {
+	if (!props.posProfile || loadingSalesPersons.value || salesPersons.value.length) return
 
 	loadingSalesPersons.value = true
-	salesPersonsResource.fetch()
+	try {
+		const params = new URLSearchParams({ pos_profile: props.posProfile })
+		const response = await fetch(
+			`/api/method/pos_next.api.pos_profile.get_sales_persons?${params.toString()}`,
+			{ credentials: "same-origin" },
+		)
+		const payload = await response.json()
+		if (!response.ok || payload.exception) throw new Error(payload.exception || response.statusText)
+		const result = payload.message?.message ?? payload.message ?? payload
+		salesPersons.value = Array.isArray(result) ? result : []
+		if (!salesPersons.value.length) showWarning(__("No active sales persons are available for this POS Profile."))
+	} catch (error) {
+		console.error("Error loading sales persons:", error)
+		salesPersons.value = []
+		showError(__("Unable to load sales persons. Please refresh and try again."))
+	} finally {
+		loadingSalesPersons.value = false
+	}
 }
-
 watch(
 	() => [show.value, showItemSalesPersonCommission.value, props.posProfile],
 	([isOpen, commissionEnabled, profile], previous = []) => {
@@ -773,7 +770,7 @@ function initializeSplitState(item) {
 			sales_person_name: row.sales_person_name,
 			share: splitAllocationMode.value === "percentage"
 				? row.allocated_percentage
-				: row.allocated_amount,
+				: row.commission_amount ?? row.allocated_amount,
 		}))
 		return
 	}
@@ -794,7 +791,7 @@ function setItemSalesPersonMode(mode) {
 		splitRows.value = [createSplitRow({
 			sales_person: localSalesPerson.value,
 			sales_person_name: localSalesPersonName.value,
-			share: splitAllocationMode.value === "percentage" ? 100 : calculatedTotal.value,
+			share: splitAllocationMode.value === "percentage" ? 100 : commissionAmount.value,
 		})]
 		return
 	}
@@ -828,7 +825,7 @@ function normalizeSplitRows() {
 }
 
 function handleSplitAllocationModeChange() {
-	const total = Number.parseFloat(calculatedTotal.value || 0) || 0
+	const total = Number.parseFloat(commissionAmount.value || 0) || 0
 	const newMode = splitAllocationMode.value
 	const oldMode = previousSplitAllocationMode
 	splitRows.value = splitRows.value.map((row) => {
@@ -854,40 +851,37 @@ function handleSplitAllocationModeChange() {
 function buildSplitAllocations() {
 	const total = Number.parseFloat(calculatedTotal.value || 0) || 0
 	const rate = Number.parseFloat(localCommissionRate.value || 0) || 0
-	const rows = splitRows.value
-		.map((row) => ({
-			sales_person: row.sales_person || "",
-			sales_person_name: row.sales_person_name || row.sales_person || "",
-			share: Number.parseFloat(row.share || 0) || 0,
-		}))
-		.filter((row) => row.sales_person || row.share > 0)
+	const commissionPool = Number((total * rate / 100).toFixed(2))
+	const rows = splitRows.value.map((row) => ({
+		sales_person: row.sales_person || "",
+		sales_person_name: row.sales_person_name || row.sales_person || "",
+		share: Number.parseFloat(row.share || 0) || 0,
+	})).filter((row) => row.sales_person || row.share > 0)
 
-	let allocated = 0
+	let allocatedCommission = 0
 	return rows.map((row, index) => {
 		const isLast = index === rows.length - 1
 		const percentage = splitAllocationMode.value === "percentage"
 			? Number(row.share.toFixed(4))
-			: total > 0
-				? Number((row.share / total * 100).toFixed(4))
-				: 0
+			: commissionPool > 0 ? Number((row.share / commissionPool * 100).toFixed(4)) : 0
 		const amount = splitAllocationMode.value === "percentage"
-			? Number((total * percentage / 100).toFixed(2))
+			? Number((commissionPool * percentage / 100).toFixed(2))
 			: Number(row.share.toFixed(2))
-		allocated += amount
-		const finalAmount = isLast && Math.abs(total - allocated) <= 0.01
-			? Number((amount + total - allocated).toFixed(2))
+		allocatedCommission += amount
+		const finalCommission = isLast && Math.abs(commissionPool - allocatedCommission) <= 0.01
+			? Number((amount + commissionPool - allocatedCommission).toFixed(2))
 			: amount
 		return {
 			sales_person: row.sales_person,
 			sales_person_name: row.sales_person_name,
 			allocated_percentage: percentage,
-			allocated_amount: finalAmount,
+			sales_amount: Number((total * percentage / 100).toFixed(2)),
+			allocated_amount: finalCommission,
 			commission_rate: rate,
-			commission_amount: Number((finalAmount * rate / 100).toFixed(2)),
+			commission_amount: finalCommission,
 		}
 	})
 }
-
 async function handleWarehouseChange() {
 	if (!localItem.value || !localWarehouse.value) return
 
@@ -976,6 +970,11 @@ function formatCurrency(amount) {
 }
 
 function updateItem() {
+	const commissionRate = Number.parseFloat(localCommissionRate.value || 0) || 0
+	if (commissionRate < 0 || commissionRate > commissionMaxRate.value) {
+		showWarning(__("Commission must be between 0% and {0}% for this item.", [commissionMaxRate.value]))
+		return
+	}
 	const assigningSalesPerson = showItemSalesPersonCommission.value && (
 		itemSalesPersonMode.value === "split" || Boolean(localSalesPerson.value)
 	)
