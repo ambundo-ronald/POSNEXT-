@@ -1,0 +1,38 @@
+{
+ "actions": [],
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "fetch_section", "company", "warehouse", "column_break_filters", "item_group", "fetch_items",
+  "commission_items_section", "commission_items",
+  "accounting_section", "commission_accounts"
+ ],
+ "fields": [
+  {"fieldname": "fetch_section", "fieldtype": "Section Break", "label": "Fetch Items"},
+  {"description": "Company used when fetching items. Existing rows for other companies are preserved.", "fieldname": "company", "fieldtype": "Link", "label": "Company", "options": "Company", "reqd": 1},
+  {"description": "Optional. Fetch stock items available in this warehouse.", "fieldname": "warehouse", "fieldtype": "Link", "label": "Warehouse", "options": "Warehouse"},
+  {"fieldname": "column_break_filters", "fieldtype": "Column Break"},
+  {"description": "Optional. Includes descendants of the selected Item Group.", "fieldname": "item_group", "fieldtype": "Link", "label": "Item Group", "options": "Item Group"},
+  {"fieldname": "fetch_items", "fieldtype": "Button", "label": "Fetch Items"},
+  {"fieldname": "commission_items_section", "fieldtype": "Section Break", "label": "Item Commission Rules"},
+  {"description": "Sales Person % is the total commission pool for the item. Company % is calculated automatically.", "fieldname": "commission_items", "fieldtype": "Table", "label": "Commission Items", "options": "POS Commission Item"},
+  {"collapsible": 1, "fieldname": "accounting_section", "fieldtype": "Section Break", "label": "Accounting"},
+  {"description": "Accounts used when booking periodic commission accruals: debit expense and credit payable.", "fieldname": "commission_accounts", "fieldtype": "Table", "label": "Commission Accounts", "options": "POS Commission Account"}
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-25 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "POS Commission Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1},
+  {"create": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "Sales Manager", "share": 1, "write": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

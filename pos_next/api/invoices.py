@@ -23,6 +23,7 @@ from erpnext.stock.doctype.batch.batch import get_batch_qty, get_batch_no
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
 from pos_next.pricing import resolve_profile_selling_price_list
 from pos_next.payment_reconciliation import resolve_change_mode_of_payment
+from pos_next.pos_next.doctype.pos_commission_settings.pos_commission_settings import get_commission_rate
 
 try:
     from erpnext.accounts.doctype.pricing_rule.pricing_rule import (
@@ -159,14 +160,17 @@ def _parse_item_sales_person_allocations(item):
     return allocations
 
 
-def _normalize_item_sales_person_allocations(item, fields):
+def _normalize_item_sales_person_allocations(item, fields, commission_rate_override=None):
     allocations = _parse_item_sales_person_allocations(item)
     if not allocations:
         return []
 
     item_label = item.get("item_name") or item.get("item_code")
     line_amount = flt(item.get("amount"), 2)
-    item_commission_rate = flt(item.get("posa_commission_rate"), 4)
+    item_commission_rate = flt(
+        commission_rate_override if commission_rate_override is not None else item.get("posa_commission_rate"),
+        4,
+    )
     total_percentage = flt(sum(flt(row.get("allocated_percentage"), 4) for row in allocations), 4)
 
     if not line_amount:
@@ -199,7 +203,12 @@ def _normalize_item_sales_person_allocations(item, fields):
             percentage = flt(100 - allocated_percentage, 4)
             amount = flt(line_amount - allocated_amount, 2)
 
-        commission_rate = flt(row.get("commission_rate") if row.get("commission_rate") is not None else item_commission_rate, 4)
+        commission_rate = flt(
+            item_commission_rate
+            if commission_rate_override is not None
+            else row.get("commission_rate") if row.get("commission_rate") is not None else item_commission_rate,
+            4,
+        )
         if commission_rate < 0 or commission_rate > 100:
             frappe.throw(
                 _("Commission rate for {0} must be between 0 and 100.").format(item_label)
@@ -240,7 +249,16 @@ def apply_item_sales_person_commissions(invoice_doc, require_sales_person=False)
 
     missing_items = []
     for item in invoice_doc.get("items", []):
-        allocations = _normalize_item_sales_person_allocations(item, fields)
+        commission_rule = get_commission_rate(
+            item.get("item_code"), invoice_doc.get("company"), item.get("warehouse")
+        )
+        configured_rate = None
+        if commission_rule:
+            configured_rate = flt(commission_rule.get("sales_person_percentage"), 4)
+            item.posa_commission_rate = configured_rate
+        allocations = _normalize_item_sales_person_allocations(
+            item, fields, commission_rate_override=configured_rate
+        )
         sales_person = cstr(item.get("posa_sales_person")).strip()
         if require_sales_person and not allocations and not sales_person:
             missing_items.append(item.get("item_name") or item.get("item_code"))

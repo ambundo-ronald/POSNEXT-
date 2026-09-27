@@ -372,19 +372,27 @@ def get_sales_persons(pos_profile=None):
 	if not pos_profile:
 		frappe.throw(_("POS Profile is required"))
 
-	if not frappe.db.exists(
-		"POS Profile User", {"parent": pos_profile, "user": frappe.session.user}
-	):
+	has_profile_access = bool(
+		frappe.db.exists(
+			"POS Profile User", {"parent": pos_profile, "user": frappe.session.user}
+		)
+	)
+	has_open_shift = bool(
+		frappe.db.exists(
+			"POS Opening Shift",
+			{
+				"pos_profile": pos_profile,
+				"user": frappe.session.user,
+				"status": "Open",
+				"docstatus": 1,
+			},
+		)
+	)
+	is_manager = bool({"System Manager", "Sales Manager"}.intersection(frappe.get_roles()))
+	if not (has_profile_access or has_open_shift or is_manager):
 		frappe.throw(_("You don't have access to this POS Profile"), frappe.PermissionError)
 
-	company = frappe.db.get_value("POS Profile", pos_profile, "company")
 	filters = {"enabled": 1, "is_group": 0}
-	if (
-		company
-		and frappe.db.has_column("Sales Person", "company")
-		and frappe.db.count("Sales Person", {**filters, "company": company})
-	):
-		filters["company"] = company
 
 	return frappe.get_all(
 		"Sales Person",

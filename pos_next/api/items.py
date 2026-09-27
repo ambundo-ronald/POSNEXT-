@@ -12,6 +12,10 @@ from frappe import _, as_json
 from frappe.query_builder import DocType, functions as fn
 from frappe.utils import flt, nowdate
 from pos_next.pricing import parse_customer_context, resolve_profile_selling_price_list
+from pos_next.pos_next.doctype.pos_commission_settings.pos_commission_settings import (
+	get_commission_rate,
+	get_commission_rate_map,
+)
 
 ITEM_RESULT_FIELDS = [
 	"name as item_code",
@@ -366,6 +370,16 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
 			uoms.append({"uom": stock_uom, "conversion_factor": 1.0})
 
 	res["item_uoms"] = uoms
+
+	commission_rule = get_commission_rate(item_code, company, warehouse)
+	if commission_rule:
+		res["posa_commission_rate"] = flt(commission_rule["sales_person_percentage"])
+		res["posa_company_percentage"] = flt(commission_rule["company_percentage"])
+		res["posa_commission_configured"] = 1
+	else:
+		res["posa_commission_rate"] = flt(item.get("posa_commission_rate") or 0)
+		res["posa_company_percentage"] = flt(100 - res["posa_commission_rate"])
+		res["posa_commission_configured"] = 0
 
 	return res
 
@@ -1214,6 +1228,9 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 				)
 
 		item_tax_map = _get_item_tax_template_map(item_codes, pos_profile_doc.company)
+		commission_rate_map = get_commission_rate_map(
+			item_codes, pos_profile_doc.company, pos_profile_doc.warehouse
+		)
 
 		# Enrich items with price, stock, barcode, and UOM data
 		for item in items:
@@ -1288,6 +1305,12 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 			tax_info = item_tax_map.get(item["item_code"], {})
 			item["item_tax_template"] = tax_info.get("item_tax_template")
 			item["item_tax_rate"] = flt(tax_info.get("item_tax_rate") or 0)
+
+			commission_rule = commission_rate_map.get(item["item_code"])
+			if commission_rule:
+				item["posa_commission_rate"] = flt(commission_rule["sales_person_percentage"])
+				item["posa_company_percentage"] = flt(commission_rule["company_percentage"])
+				item["posa_commission_configured"] = 1
 
 			# ===================================================================
 			# STOCK QUANTITY ASSIGNMENT: Stock Items vs Product Bundles
@@ -1403,7 +1426,8 @@ def get_item_details(item_code, pos_profile, customer=None, customer_group=None,
 			price_list=effective_price_list,
 			company=pos_profile_doc.company,
 		)
-		details["posa_commission_rate"] = flt(item_doc.get("posa_commission_rate") or 0)
+		if not details.get("posa_commission_configured"):
+			details["posa_commission_rate"] = flt(item_doc.get("posa_commission_rate") or 0)
 		tax_info = _get_item_tax_template_map([item_code], pos_profile_doc.company).get(item_code, {})
 		details["item_tax_template"] = tax_info.get("item_tax_template")
 		details["item_tax_rate"] = flt(tax_info.get("item_tax_rate") or 0)

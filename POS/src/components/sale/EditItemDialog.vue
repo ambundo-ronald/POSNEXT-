@@ -227,6 +227,7 @@
 								class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
 							>
 								<option value="">{{ loadingSalesPersons ? __('Loading...') : __('Select sales person') }}</option>
+				<option v-if="!loadingSalesPersons && salesPersons.length === 0" value="" disabled>{{ __('No active sales persons found') }}</option>
 								<option
 									v-for="person in salesPersons"
 									:key="person.name"
@@ -241,6 +242,7 @@
 							<div class="relative">
 								<input
 									v-model.number="localCommissionRate"
+									:readonly="commissionRateLocked"
 									type="number"
 									min="0"
 									max="100"
@@ -261,6 +263,7 @@
 								<div class="relative">
 									<input
 										v-model.number="localCommissionRate"
+										:readonly="commissionRateLocked"
 										type="number"
 										min="0"
 										max="100"
@@ -296,6 +299,7 @@
 										class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
 									>
 										<option value="">{{ loadingSalesPersons ? __('Loading...') : __('Select sales person') }}</option>
+				<option v-if="!loadingSalesPersons && salesPersons.length === 0" value="" disabled>{{ __('No active sales persons found') }}</option>
 										<option
 											v-for="person in salesPersons"
 											:key="person.name"
@@ -516,6 +520,7 @@ const missingItemSalesPerson = computed(() => {
 	}
 	return !localSalesPerson.value
 })
+const commissionRateLocked = computed(() => Boolean(localItem.value?.posa_commission_configured))
 const commissionAmount = computed(() => {
 	const rate = Number.parseFloat(localCommissionRate.value || 0) || 0
 	return Number(((calculatedTotal.value || 0) * rate / 100).toFixed(2))
@@ -552,6 +557,7 @@ const salesPersonsResource = createResource({
 		console.error("Error loading sales persons:", error)
 		salesPersons.value = []
 		loadingSalesPersons.value = false
+		showError(__("Unable to load sales persons. Please refresh and try again."))
 	},
 })
 

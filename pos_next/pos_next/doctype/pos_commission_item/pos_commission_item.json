@@ -1,0 +1,28 @@
+{
+ "actions": [],
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["company", "item_code", "item_name", "item_group", "warehouse", "company_percentage", "sales_person_percentage"],
+ "fields": [
+  {"fieldname": "company", "fieldtype": "Link", "in_list_view": 1, "label": "Company", "options": "Company", "reqd": 1},
+  {"fieldname": "item_code", "fieldtype": "Link", "in_list_view": 1, "label": "Item", "options": "Item", "reqd": 1},
+  {"fetch_from": "item_code.item_name", "fieldname": "item_name", "fieldtype": "Data", "in_list_view": 1, "label": "Item Name", "read_only": 1},
+  {"fetch_from": "item_code.item_group", "fieldname": "item_group", "fieldtype": "Link", "label": "Item Group", "options": "Item Group", "read_only": 1},
+  {"fieldname": "warehouse", "fieldtype": "Link", "label": "Warehouse", "options": "Warehouse"},
+  {"default": "100", "fieldname": "company_percentage", "fieldtype": "Percent", "in_list_view": 1, "label": "Company %", "read_only": 1, "reqd": 1},
+  {"default": "0", "fieldname": "sales_person_percentage", "fieldtype": "Percent", "in_list_view": 1, "label": "Sales Person %", "reqd": 1}
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-25 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "POS Commission Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
