@@ -143,12 +143,15 @@ export default defineConfig({
 					},
 					{
 						urlPattern: /\/assets\/pos_next\/pos\/.*/i,
-						handler: "CacheFirst",
+						handler: "StaleWhileRevalidate",
 						options: {
 							cacheName: "pos-assets-cache",
 							expiration: {
 								maxEntries: 500,
-								maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+								maxAgeSeconds: 60 * 60 * 24 * 7,
+							},
+							cacheableResponse: {
+								statuses: [0, 200],
 							},
 						},
 					},

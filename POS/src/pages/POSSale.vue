@@ -2285,7 +2285,7 @@ async function confirmClearCache() {
 		})
 
 		// Clear browser localStorage and sessionStorage
-		const browserResult = clearBrowserCache()
+		const browserResult = await clearBrowserCache()
 
 		if (dbResult.success && browserResult.success) {
 			log.success('Cache cleared successfully', {
@@ -2315,6 +2315,7 @@ async function confirmClearCache() {
 			}
 
 			showSuccess(__("All cached data has been cleared successfully"))
+			window.setTimeout(() => window.location.reload(), 300)
 		} else {
 			throw new Error('Failed to clear cache completely')
 		}

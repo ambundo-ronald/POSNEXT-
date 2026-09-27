@@ -302,40 +302,53 @@ export const nukeDatabase = async () => {
  * Clear browser cache and localStorage (POS-specific data only)
  * @returns {Object} - Status of cleared data
  */
-export const clearBrowserCache = () => {
+export const clearBrowserCache = async () => {
 	const results = {
 		localStorage: 0,
 		sessionStorage: 0,
+		cacheStorage: [],
 	}
 
 	try {
-		// Clear POS-specific localStorage items
 		const keysToRemove = []
 		for (let i = 0; i < localStorage.length; i++) {
 			const key = localStorage.key(i)
-			if (key?.startsWith('pos_next_') || key?.startsWith('frappe_')) {
+			if (key?.startsWith("pos_next_") || key?.startsWith("frappe_")) {
 				keysToRemove.push(key)
 			}
 		}
-
-		keysToRemove.forEach(key => {
+		keysToRemove.forEach((key) => {
 			localStorage.removeItem(key)
 			results.localStorage++
 		})
 
-		// Clear sessionStorage
 		const sessionKeys = []
 		for (let i = 0; i < sessionStorage.length; i++) {
 			const key = sessionStorage.key(i)
-			if (key?.startsWith('pos_next_') || key?.startsWith('frappe_')) {
+			if (key?.startsWith("pos_next_") || key?.startsWith("frappe_")) {
 				sessionKeys.push(key)
 			}
 		}
-
-		sessionKeys.forEach(key => {
+		sessionKeys.forEach((key) => {
 			sessionStorage.removeItem(key)
 			results.sessionStorage++
 		})
+
+		if ("caches" in window) {
+			const cacheNames = await caches.keys()
+			const disposableCaches = cacheNames.filter(
+				(name) =>
+					name === "pos-assets-cache" ||
+					name === "pos-page-cache" ||
+					name === "api-cache" ||
+					name.startsWith("workbox-precache"),
+			)
+			await Promise.all(
+				disposableCaches.map(async (name) => {
+					if (await caches.delete(name)) results.cacheStorage.push(name)
+				}),
+			)
+		}
 
 		log.info("Browser cache cleared:", results)
 		return { success: true, cleared: results }
@@ -344,6 +357,5 @@ export const clearBrowserCache = () => {
 		return { success: false, error: error.message, cleared: results }
 	}
 }
-
 // Initialize database on import
 initDB()
