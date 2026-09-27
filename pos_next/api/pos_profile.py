@@ -368,7 +368,7 @@ def update_warehouse(pos_profile, warehouse):
 
 @frappe.whitelist()
 def get_sales_persons(pos_profile=None):
-	"""Return active sales persons belonging to the POS Profile company."""
+	"""Return enabled leaf sales persons for the POS Profile company."""
 	if not pos_profile:
 		frappe.throw(_("POS Profile is required"))
 	if not frappe.db.exists("POS Profile", pos_profile):
@@ -396,22 +396,54 @@ def get_sales_persons(pos_profile=None):
 	if not company:
 		return []
 
-	return frappe.db.sql(
-		"""
-		SELECT DISTINCT
-			sp.name,
-			sp.sales_person_name,
-			sp.commission_rate
-		FROM `tabSales Person` sp
-		LEFT JOIN `tabEmployee` employee ON employee.name = sp.employee
-		WHERE sp.enabled = 1
-			AND sp.is_group = 0
-			AND (
-				sp.posa_company = %(company)s
-				OR (IFNULL(sp.posa_company, '') = '' AND employee.company = %(company)s)
-			)
-		ORDER BY sp.sales_person_name
-		""",
-		{"company": company},
-		as_dict=True,
+	meta = frappe.get_meta("Sales Person")
+	fields = ["name", "sales_person_name", "commission_rate"]
+	has_company_field = meta.has_field("posa_company")
+	has_employee_field = meta.has_field("employee")
+	if has_company_field:
+		fields.append("posa_company")
+	if has_employee_field:
+		fields.append("employee")
+
+	sales_persons = frappe.get_all(
+		"Sales Person",
+		filters={"enabled": 1, "is_group": 0},
+		fields=fields,
+		order_by="sales_person_name",
+		limit_page_length=0,
 	)
+	if not sales_persons:
+		return []
+
+	employee_companies = {}
+	if has_employee_field:
+		employee_names = list({row.employee for row in sales_persons if row.get("employee")})
+		if employee_names:
+			employee_companies = {
+				row.name: row.company
+				for row in frappe.get_all(
+					"Employee",
+					filters={"name": ["in", employee_names]},
+					fields=["name", "company"],
+					limit_page_length=0,
+				)
+			}
+
+	def assigned_company(row):
+		return (
+			row.get("posa_company") if has_company_field else None
+		) or employee_companies.get(row.get("employee"))
+
+	mapped = [row for row in sales_persons if assigned_company(row) == company]
+	has_any_company_mapping = any(assigned_company(row) for row in sales_persons)
+
+	# Preserve legacy installations until administrators assign Company or Employee.
+	result = mapped if has_any_company_mapping else sales_persons
+	return [
+		{
+			"name": row.name,
+			"sales_person_name": row.sales_person_name,
+			"commission_rate": row.commission_rate,
+		}
+		for row in result
+	]

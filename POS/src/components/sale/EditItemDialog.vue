@@ -312,12 +312,12 @@
 										{{ splitAllocationMode === 'percentage' ? __('Share %') : __('Amount') }}
 									</label>
 									<input
-										v-model.number="row.share"
+										:value="row.share"
+										@input="handleSplitShareInput(row, $event.target.value)"
 										@blur="normalizeSplitRow(row)"
-										type="number"
-										min="0"
-										:max="splitAllocationMode === 'percentage' ? 100 : commissionAmount"
-										step="0.01"
+										type="text"
+										inputmode="decimal"
+										autocomplete="off"
 										class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 									/>
 								</div>
@@ -815,6 +815,12 @@ function removeSplitRow(index) {
 function handleSplitSalesPersonChange(row) {
 	const person = salesPersons.value.find((personRow) => personRow.name === row.sales_person)
 	row.sales_person_name = person?.sales_person_name || person?.name || row.sales_person || ""
+}
+
+function handleSplitShareInput(row, value) {
+	row.share = String(value ?? "")
+		.replace(",", ".")
+		.replace(/[^0-9.]/g, "")
 }
 
 function normalizeSplitRow(row) {
