@@ -865,6 +865,7 @@ export function useInvoice() {
 				change_amount:
 					remainingAmount.value < 0 ? Math.abs(remainingAmount.value) : 0,
 				is_credit_sale: Boolean(options.is_credit_sale),
+				payment_entry_workflow: 1,
 				sms_pending_override_reason: options.smsPendingOverrideReason || "",
 			}
 

@@ -1156,9 +1156,21 @@ def submit_invoice(invoice=None, data=None):
             invoice_doc = frappe.get_doc(doctype, invoice_name)
             invoice_doc.update(invoice)
 
-        if invoice_doc.get("payments"):
+        if cint((data or {}).get("payment_entry_workflow")):
+            # ERPNext can repopulate the payment table from POS Profile defaults
+            # while saving the draft, even when POS Next supplied no rows. The
+            # selected checkout payments are posted as Payment Entries after the
+            # invoice is submitted, so remove these generated inline values.
+            invoice_doc.set("payments", [])
+            invoice_doc.paid_amount = 0
+            invoice_doc.base_paid_amount = 0
+            invoice_doc.change_amount = 0
+            invoice_doc.base_change_amount = 0
+            if invoice_doc.meta.has_field("account_for_change_amount"):
+                invoice_doc.account_for_change_amount = None
+        elif invoice_doc.get("payments"):
             frappe.throw(
-                _("POS Next requires Payment Entry records. Submit the invoice without inline payment rows, then create and allocate Payment Entries."),
+                _("POS Next requires Payment Entry records. Refresh POS Next, then retry checkout."),
                 frappe.ValidationError,
             )
 
