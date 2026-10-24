@@ -1165,6 +1165,10 @@ def submit_invoice(invoice=None, data=None):
             # while saving the draft, even when POS Next supplied no rows. The
             # selected checkout payments are posted as Payment Entries after the
             # invoice is submitted, so remove these generated inline values.
+            # ERPNext requires at least one inline row when is_pos is enabled;
+            # submit as a regular stock-updating Sales Invoice while retaining
+            # pos_profile and the opening-shift link for POS reporting.
+            invoice_doc.is_pos = 0
             invoice_doc.set("payments", [])
             invoice_doc.paid_amount = 0
             invoice_doc.base_paid_amount = 0
