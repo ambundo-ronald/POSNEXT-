@@ -1156,7 +1156,11 @@ def submit_invoice(invoice=None, data=None):
             invoice_doc = frappe.get_doc(doctype, invoice_name)
             invoice_doc.update(invoice)
 
-        if cint((data or {}).get("payment_entry_workflow")):
+        uses_payment_entry_workflow = cint(
+            (data or {}).get("payment_entry_workflow")
+        ) or bool(client_transaction_id)
+
+        if uses_payment_entry_workflow:
             # ERPNext can repopulate the payment table from POS Profile defaults
             # while saving the draft, even when POS Next supplied no rows. The
             # selected checkout payments are posted as Payment Entries after the

@@ -25,7 +25,10 @@ def get_price_list_mappings(pos_profile=None):
 	if not _has_pos_profile_access(pos_profile, "read"):
 		frappe.throw(_("You don't have access to this POS Profile"))
 
-	return frappe.db.get_list(
+	# Access is checked against the assigned POS Profile above. Use get_all so
+	# ordinary cashiers do not also need direct DocType permission for this
+	# internal configuration table.
+	return frappe.get_all(
 		"POS Price List Mapping",
 		filters={"pos_profile": pos_profile, "enabled": 1},
 		fields=["name", "warehouse", "customer_group", "price_list"],
