@@ -26,6 +26,7 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 			frm.trigger("fetch_entries");
 		});
 		toggle_allocate_button(frm);
+		toggle_non_sales_button(frm);
 	},
 
 	onload_post_render(frm) {
@@ -109,6 +110,7 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 				}
 				frm.refresh_field("sms_payments");
 				toggle_allocate_button(frm);
+				toggle_non_sales_button(frm);
 
 				if (!frm.doc.invoices.length && !frm.doc.sms_payments.length) {
 					frappe.msgprint({
@@ -183,6 +185,25 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 			},
 		});
 	},
+
+	process_non_sales_payments(frm) {
+		const selected = frm.get_selected();
+		const payment_rows = selected.sms_payments || [];
+		const sms_payment_names = frm.doc.sms_payments
+			.filter((payment) => payment_rows.includes(payment.name))
+			.map((payment) => payment.sms_payment);
+
+		if (!sms_payment_names.length) {
+			frappe.msgprint({
+				title: __("No Payments Selected"),
+				message: __("Select at least one SMS payment to mark as non-sales."),
+				indicator: "orange",
+			});
+			return;
+		}
+
+		show_non_sales_reconciliation_dialog(frm, sms_payment_names);
+	},
 });
 
 function toggle_allocate_button(frm) {
@@ -193,6 +214,110 @@ function toggle_allocate_button(frm) {
 		});
 		button.addClass("btn-primary");
 	}
+}
+
+function toggle_non_sales_button(frm) {
+	frm.remove_custom_button(__("Mark as Non-Sales Receipt"));
+	const can_process =
+		frm.doc.sms_payments?.length &&
+		(frappe.user.has_role("System Manager") || frappe.user.has_role("Sales Manager"));
+	if (!can_process) {
+		return;
+	}
+
+	frm.add_custom_button(__("Mark as Non-Sales Receipt"), () => {
+		frm.trigger("process_non_sales_payments");
+	});
+}
+
+function show_non_sales_reconciliation_dialog(frm, sms_payment_names) {
+	const dialog = new frappe.ui.Dialog({
+		title: __("Mark Selected Payments as Non-Sales"),
+		fields: [
+			{
+				fieldtype: "Int",
+				fieldname: "payment_count",
+				label: __("Selected Payments"),
+				default: sms_payment_names.length,
+				read_only: 1,
+			},
+			{
+				fieldtype: "Select",
+				fieldname: "reason",
+				label: __("Reason"),
+				options: [
+					"Director Injection",
+					"Shareholder Loan",
+					"Capital Contribution",
+					"Bank Transfer / Internal Transfer",
+					"Historical Offline Sale - Stock Already Reconciled",
+					"Other Non-Sales Receipt",
+				],
+				reqd: 1,
+			},
+			{
+				fieldtype: "Link",
+				fieldname: "credit_account",
+				label: __("Credit Account"),
+				options: "Account",
+				reqd: 1,
+				get_query: () => ({
+					filters: {
+						company: frm.doc.company,
+						is_group: 0,
+						root_type: ["in", ["Liability", "Equity", "Asset"]],
+					},
+				}),
+			},
+			{
+				fieldtype: "Date",
+				fieldname: "posting_date",
+				label: __("Posting Date"),
+				default: frappe.datetime.get_today(),
+				reqd: 1,
+			},
+			{
+				fieldtype: "Small Text",
+				fieldname: "remarks",
+				label: __("Remarks"),
+			},
+		],
+		primary_action_label: __("Create Journal Entries"),
+		primary_action(values) {
+			frappe.confirm(
+				__("Mark {0} selected SMS payment(s) as non-sales receipts?", [sms_payment_names.length]),
+				() => {
+					dialog.get_primary_btn().prop("disabled", true);
+					frappe.call({
+						method: "pos_next.pos_next.doctype.sms_enabler_payment_reconciliation.sms_enabler_payment_reconciliation.process_non_sales_sms_receipts",
+						args: {
+							sms_payment_names,
+							reason: values.reason,
+							credit_account: values.credit_account,
+							posting_date: values.posting_date,
+							remarks: values.remarks,
+						},
+						freeze: true,
+						freeze_message: __("Posting non-sales receipts..."),
+						callback(response) {
+							if (!response.exc) {
+								dialog.hide();
+								frappe.show_alert({
+									message: __("{0} Journal Entry(s) created", [response.message?.journal_entries?.length || 0]),
+									indicator: "green",
+								});
+								frm.trigger("refresh_reconciliation_entries");
+							}
+						},
+						always() {
+							dialog.get_primary_btn().prop("disabled", false);
+						},
+					});
+				},
+			);
+		},
+	});
+	dialog.show();
 }
 
 function set_allocation_status_formatter(frm) {

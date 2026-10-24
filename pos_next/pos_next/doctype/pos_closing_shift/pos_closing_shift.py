@@ -397,8 +397,8 @@ def get_payments_entries(pos_opening_shift):
         SELECT DISTINCT
             pe.name,
             pe.mode_of_payment,
-            pe.paid_amount,
-            pe.base_paid_amount,
+            CASE WHEN pe.payment_type = 'Pay' THEN -pe.paid_amount ELSE pe.paid_amount END AS paid_amount,
+            CASE WHEN pe.payment_type = 'Pay' THEN -pe.base_paid_amount ELSE pe.base_paid_amount END AS base_paid_amount,
             pe.target_exchange_rate,
             pe.reference_no,
             pe.posting_date,
@@ -409,11 +409,16 @@ def get_payments_entries(pos_opening_shift):
             AND per.reference_doctype = 'Sales Invoice'
         LEFT JOIN `tabSales Invoice` si
             ON si.name = per.reference_name
+        LEFT JOIN `tabSMS Enabler Payment Register` sms
+            ON sms.cash_change_payment_entry = pe.name
+        LEFT JOIN `tabSales Invoice` sms_si
+            ON sms_si.name = sms.sales_invoice
         WHERE pe.docstatus = 1
-            AND pe.payment_type = 'Receive'
+            AND pe.payment_type IN ('Receive', 'Pay')
             AND (
                 pe.reference_no = %(pos_opening_shift)s
                 OR si.posa_pos_opening_shift = %(pos_opening_shift)s
+                OR sms_si.posa_pos_opening_shift = %(pos_opening_shift)s
             )
         """,
         {"pos_opening_shift": pos_opening_shift},

@@ -482,6 +482,24 @@
 												:options="salesPersonSelectionOptions"
 											/>
 											<CheckboxField
+												v-model="settings.enforce_sms_pending_limit"
+												:label="__('Enforce SMS Pending Payment Limit')"
+												:description="__('Block checkout when unreconciled SMS payments exceed the configured limit.')"
+											/>
+											<NumberField
+												v-if="settings.enforce_sms_pending_limit"
+												v-model="settings.maximum_pending_sms_payments"
+												:label="__('Maximum Pending SMS Payments')"
+												:description="__('Checkout is blocked when pending payments exceed this number.')"
+												:min="0"
+											/>
+											<CheckboxField
+												v-if="settings.enforce_sms_pending_limit"
+												v-model="settings.allow_sms_pending_manager_override"
+												:label="__('Allow Manager Override')"
+												:description="__('Sales Managers and System Managers can continue after entering a reason.')"
+											/>
+											<CheckboxField
 												v-model="settings.enable_item_sales_person_commission"
 												:label="__('Item-Level Sales Person Commission')"
 												:description="__('Single selects one sales person at checkout and applies them to all items. Multiple requires item-by-item assignment for commission tracking.')"
@@ -833,6 +851,9 @@ const settings = ref({
 	enable_sales_persons: "Disabled",
 	enable_item_sales_person_commission: 0,
 	sms_payment_reconciliation_mode: "Manual",
+	enforce_sms_pending_limit: 0,
+	maximum_pending_sms_payments: 2,
+	allow_sms_pending_manager_override: 1,
 	sms_enabler_enabled: 0,
 	sms_enabler_source: "SMS Enabler",
 	sms_enabler_token: "",

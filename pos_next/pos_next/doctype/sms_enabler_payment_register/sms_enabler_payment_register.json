@@ -27,6 +27,19 @@
   "mode_of_payment",
   "sales_invoice",
   "payment_entry",
+  "excess_payment_entry",
+  "cash_change_amount",
+  "cash_change_payment_entry",
+  "cash_change_returned_by",
+  "cash_change_returned_at",
+  "section_non_sales",
+  "non_sales_reason",
+  "non_sales_credit_account",
+  "non_sales_amount",
+  "non_sales_journal_entry",
+  "non_sales_remarks",
+  "non_sales_processed_by",
+  "non_sales_processed_at",
   "section_raw",
   "raw_message",
   "parse_status",
@@ -40,7 +53,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Pending\nMatched\nPartially Allocated\nConsumed\nDuplicate\nFailed Parse",
+   "options": "Pending\nMatched\nPartially Allocated\nConsumed\nConsumed - Non-Sales\nDuplicate\nFailed Parse",
    "reqd": 1
   },
   {
@@ -171,6 +184,91 @@
    "fieldtype": "Link",
    "label": "Payment Entry",
    "options": "Payment Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "excess_payment_entry",
+   "fieldtype": "Link",
+   "label": "Excess Receipt Payment Entry",
+   "options": "Payment Entry",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "cash_change_amount",
+   "fieldtype": "Currency",
+   "label": "Cash Change Returned",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cash_change_payment_entry",
+   "fieldtype": "Link",
+   "label": "Cash Change Payment Entry",
+   "options": "Payment Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cash_change_returned_by",
+   "fieldtype": "Link",
+   "label": "Cash Change Returned By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cash_change_returned_at",
+   "fieldtype": "Datetime",
+   "label": "Cash Change Returned At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_non_sales",
+   "fieldtype": "Section Break",
+   "label": "Non-Sales Allocation"
+  },
+  {
+   "fieldname": "non_sales_reason",
+   "fieldtype": "Data",
+   "label": "Non-Sales Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "non_sales_credit_account",
+   "fieldtype": "Link",
+   "label": "Credit Account",
+   "options": "Account",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "non_sales_amount",
+   "fieldtype": "Currency",
+   "label": "Non-Sales Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "non_sales_journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "non_sales_remarks",
+   "fieldtype": "Small Text",
+   "label": "Non-Sales Remarks",
+   "read_only": 1
+  },
+  {
+   "fieldname": "non_sales_processed_by",
+   "fieldtype": "Link",
+   "label": "Processed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "non_sales_processed_at",
+   "fieldtype": "Datetime",
+   "label": "Processed At",
    "read_only": 1
   },
   {

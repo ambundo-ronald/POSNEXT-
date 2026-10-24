@@ -337,11 +337,21 @@ def _parse_payment_allocations(payments):
 		if isinstance(payment, dict):
 			name = payment.get("name") or payment.get("sms_payment_name")
 			amount = flt(payment.get("amount") or 0)
+			return_excess_as_cash_change = cint(
+				payment.get("return_excess_as_cash_change") or 0
+			)
 		else:
 			name = payment
 			amount = 0
+			return_excess_as_cash_change = 0
 		if name:
-			allocations.append({"name": str(name).strip(), "amount": amount})
+			allocations.append(
+				{
+					"name": str(name).strip(),
+					"amount": amount,
+					"return_excess_as_cash_change": return_excess_as_cash_change,
+				}
+			)
 	return allocations
 
 
@@ -454,6 +464,66 @@ def _create_sms_advance_payment_entry(payment, invoice_doc, amount, mode_of_paym
 	pe.reference_no = (payment.transaction_id or payment.name)[:140]
 	pe.reference_date = posting_date
 	pe.remarks = _("Unallocated SMS Enabler balance for {0}").format(payment.name)
+	pe.flags.ignore_permissions = True
+	pe.insert()
+	pe.submit()
+	return pe.name
+
+
+def _get_cash_mode_of_payment(pos_profile, company):
+	from pos_next.payment_reconciliation import get_mode_of_payment_type
+
+	mode_of_payment = frappe.db.get_value(
+		"POS Profile", pos_profile, "posa_cash_mode_of_payment"
+	) if pos_profile else None
+	if mode_of_payment and get_mode_of_payment_type(mode_of_payment) == "cash":
+		return mode_of_payment
+
+	for row in frappe.get_all(
+		"Mode of Payment Account",
+		filters={"company": company},
+		fields=["parent"],
+		order_by="idx asc",
+	):
+		if get_mode_of_payment_type(row.parent) == "cash":
+			return row.parent
+
+	frappe.throw(_("Configure a cash Mode of Payment for POS Profile {0}").format(pos_profile))
+
+
+def _create_sms_cash_change_payment_entry(payment, invoice_doc, amount):
+	from pos_next.api.partial_payments import _resolve_payment_account
+
+	if flt(amount) <= 0:
+		return None
+	if payment.cash_change_payment_entry:
+		return payment.cash_change_payment_entry
+
+	cash_mode = _get_cash_mode_of_payment(invoice_doc.pos_profile, invoice_doc.company)
+	posting_date = max(
+		getdate(payment.received_at) if payment.received_at else getdate(nowdate()),
+		getdate(invoice_doc.posting_date),
+	)
+	pe = frappe.new_doc("Payment Entry")
+	pe.payment_type = "Pay"
+	pe.posting_date = posting_date
+	pe.party_type = "Customer"
+	pe.party = invoice_doc.customer
+	pe.company = invoice_doc.company
+	pe.mode_of_payment = cash_mode
+	pe.paid_from = _resolve_payment_account(
+		mode_of_payment=cash_mode,
+		company=invoice_doc.company,
+		invoice=invoice_doc,
+	)
+	pe.paid_to = invoice_doc.debit_to
+	pe.paid_amount = amount
+	pe.received_amount = amount
+	pe.paid_from_account_currency = invoice_doc.currency
+	pe.paid_to_account_currency = invoice_doc.currency
+	pe.reference_no = (payment.transaction_id or payment.name)[:140]
+	pe.reference_date = posting_date
+	pe.remarks = _("Cash change returned for SMS Enabler payment {0}").format(payment.name)
 	pe.flags.ignore_permissions = True
 	pe.insert()
 	pe.submit()
@@ -863,6 +933,73 @@ def get_sms_payments(company=None, pos_profile=None, search=None, amount=None, c
 	return {"count": len(matches), "payments": matches}
 
 
+def get_sms_pending_checkout_status(pos_profile):
+	if not pos_profile:
+		return {"enabled": False, "blocked": False, "pending_count": 0, "limit": 0}
+
+	settings = frappe.db.get_value(
+		"POS Settings",
+		{"pos_profile": pos_profile, "enabled": 1},
+		[
+			"enforce_sms_pending_limit",
+			"maximum_pending_sms_payments",
+			"allow_sms_pending_manager_override",
+			"sms_enabler_enabled",
+		],
+		as_dict=True,
+	) or frappe._dict()
+	global_enabled = bool(get_global_sms_enabler_settings().get("sms_enabler_enabled"))
+	enabled = bool(cint(settings.get("enforce_sms_pending_limit"))) and (
+		global_enabled or bool(cint(settings.get("sms_enabler_enabled")))
+	)
+	raw_limit = settings.get("maximum_pending_sms_payments")
+	limit = max(cint(2 if raw_limit in (None, "") else raw_limit), 0)
+	if not enabled:
+		return {"enabled": False, "blocked": False, "pending_count": 0, "limit": limit}
+
+	company = frappe.db.get_value("POS Profile", pos_profile, "company")
+	filters = {"status": ["in", ["Pending", "Matched", "Partially Allocated"]]}
+	if global_enabled:
+		filters["company"] = ["in", [company, "", None]]
+	else:
+		filters["pos_profile"] = pos_profile
+
+	pending_count = frappe.db.count(SMS_REGISTER_DOCTYPE, filters)
+	roles = set(frappe.get_roles(frappe.session.user) or [])
+	return {
+		"enabled": True,
+		"blocked": pending_count > limit,
+		"pending_count": pending_count,
+		"limit": limit,
+		"allow_manager_override": bool(cint(settings.get("allow_sms_pending_manager_override"))),
+		"can_override": bool(roles.intersection({"Sales Manager", "System Manager"})),
+	}
+
+
+@frappe.whitelist()
+def check_sms_pending_checkout(pos_profile):
+	return get_sms_pending_checkout_status(pos_profile)
+
+
+def validate_sms_pending_checkout(pos_profile, override_reason=None):
+	status = get_sms_pending_checkout_status(pos_profile)
+	if not status.get("blocked"):
+		return status
+
+	override_reason = (override_reason or "").strip()
+	if status.get("allow_manager_override") and status.get("can_override") and override_reason:
+		status["overridden"] = True
+		status["override_reason"] = override_reason
+		return status
+
+	frappe.throw(
+		_("{0} SMS payments require reconciliation. Reconcile or classify them before completing another sale.").format(
+			status.get("pending_count")
+		),
+		frappe.ValidationError,
+	)
+
+
 @frappe.whitelist()
 def get_sms_payments_for_payment_reconciliation(
 	company=None, party_type=None, party=None, search=None, pos_profile=None
@@ -1064,6 +1201,8 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 		)
 		if allocated_now <= 0.01:
 			continue
+		return_excess = bool(cint(selected.get("return_excess_as_cash_change")))
+		excess_to_return = max(available_amount - allocated_now, 0) if return_excess else 0
 
 		mode_of_payment = payment.mode_of_payment or mode_of_payment
 		new_allocated = min(allocated_amount + allocated_now, total_amount)
@@ -1080,6 +1219,17 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 				new_available,
 				mode_of_payment,
 			)
+		cash_change_payment_entry = None
+		excess_payment_entry = None
+		if excess_to_return > 0.01:
+			excess_payment_entry = payment.excess_payment_entry or _create_sms_advance_payment_entry(
+				payment, invoice_doc, excess_to_return, mode_of_payment
+			)
+			cash_change_payment_entry = _create_sms_cash_change_payment_entry(
+				payment, invoice_doc, excess_to_return
+			)
+			new_allocated = total_amount
+			new_available = 0
 
 		payment.customer = customer or invoice_doc.customer
 		payment.company = company
@@ -1087,6 +1237,12 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 		payment.sales_invoice = invoice
 		payment.mode_of_payment = mode_of_payment
 		payment.payment_entry = payment_entry
+		if cash_change_payment_entry:
+			payment.excess_payment_entry = excess_payment_entry
+			payment.cash_change_amount = flt(payment.cash_change_amount) + excess_to_return
+			payment.cash_change_payment_entry = cash_change_payment_entry
+			payment.cash_change_returned_by = frappe.session.user
+			payment.cash_change_returned_at = now_datetime()
 		payment.allocated_amount = new_allocated
 		payment.available_amount = new_available
 		payment.status = "Consumed" if new_available <= 0.01 else "Partially Allocated"
@@ -1103,6 +1259,9 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 				"mode_of_payment": payment.mode_of_payment,
 				"sales_invoice": invoice,
 				"payment_entry": payment.payment_entry,
+				"excess_payment_entry": excess_payment_entry,
+				"cash_change_amount": excess_to_return,
+				"cash_change_payment_entry": cash_change_payment_entry,
 				"status": payment.status,
 			}
 		)

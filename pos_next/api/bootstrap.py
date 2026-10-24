@@ -80,6 +80,12 @@ def get_pos_access():
 	return {
 		"can_view_reports_dashboard": can_view_reports,
 		"can_manage_settings": can_manage_settings,
+		"can_reconcile_sms_payments": bool(
+			roles.intersection({"Sales User", "Sales Manager", "Accounts User", "Accounts Manager", "System Manager"})
+		),
+		"can_override_sms_pending_limit": bool(
+			roles.intersection({"Sales Manager", "System Manager"})
+		),
 	}
 
 
@@ -175,6 +181,9 @@ def get_pos_settings(pos_profile):
 				"allow_write_off_change",
 				"allow_partial_payment",
 				"sms_payment_reconciliation_mode",
+				"enforce_sms_pending_limit",
+				"maximum_pending_sms_payments",
+				"allow_sms_pending_manager_override",
 				"decimal_precision",
 				"block_zero_price_sales",
 				"retail_price_list",
@@ -231,6 +240,9 @@ def get_default_pos_settings():
 		"allow_write_off_change": 0,
 		"allow_partial_payment": 0,
 		"sms_payment_reconciliation_mode": "Manual",
+		"enforce_sms_pending_limit": 0,
+		"maximum_pending_sms_payments": 2,
+		"allow_sms_pending_manager_override": 1,
 		"sms_enabler_enabled": 0,
 		"sms_enabler_source": "SMS Enabler",
 		"sms_enabler_token": "",

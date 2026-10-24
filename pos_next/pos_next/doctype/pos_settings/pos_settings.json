@@ -21,6 +21,9 @@
   "allow_write_off_change",
   "allow_partial_payment",
   "sms_payment_reconciliation_mode",
+  "enforce_sms_pending_limit",
+  "maximum_pending_sms_payments",
+  "allow_sms_pending_manager_override",
   "section_break_sms_enabler",
   "sms_enabler_enabled",
   "sms_enabler_source",
@@ -194,6 +197,27 @@
    "label": "SMS Payment Reconciliation",
    "options": "Manual\nSuggested\nAuto",
    "description": "Manual: cashier searches and selects payment. Suggested: show likely matches. Auto: apply only one high-confidence exact match."
+  },
+  {
+   "default": "0",
+   "fieldname": "enforce_sms_pending_limit",
+   "fieldtype": "Check",
+   "label": "Enforce SMS Pending Payment Limit",
+   "description": "Block checkout when this POS Profile has more unreconciled SMS payments than allowed."
+  },
+  {
+   "default": "2",
+   "fieldname": "maximum_pending_sms_payments",
+   "fieldtype": "Int",
+   "label": "Maximum Pending SMS Payments",
+   "description": "Checkout is blocked when pending SMS payments exceed this number."
+  },
+  {
+   "default": "1",
+   "fieldname": "allow_sms_pending_manager_override",
+   "fieldtype": "Check",
+   "label": "Allow Manager Override",
+   "description": "Sales Managers and System Managers may continue after recording an override reason."
   },
   {
    "collapsible": 1,

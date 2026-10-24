@@ -1130,6 +1130,13 @@ def submit_invoice(invoice=None, data=None):
                     return _invoice_submission_response(existing_transaction_invoice)
                 invoice["name"] = existing_transaction_invoice.name
 
+        from pos_next.api.smsenabler_mpesa import validate_sms_pending_checkout
+
+        sms_pending_status = validate_sms_pending_checkout(
+            pos_profile,
+            (data or {}).get("sms_pending_override_reason"),
+        )
+
         if is_credit_sale:
             from pos_next.pos_next.doctype.pos_settings.pos_settings import (
                 is_credit_sale_allowed_for_user,
@@ -1148,6 +1155,12 @@ def submit_invoice(invoice=None, data=None):
         else:
             invoice_doc = frappe.get_doc(doctype, invoice_name)
             invoice_doc.update(invoice)
+
+        if invoice_doc.get("payments"):
+            frappe.throw(
+                _("POS Next requires Payment Entry records. Submit the invoice without inline payment rows, then create and allocate Payment Entries."),
+                frappe.ValidationError,
+            )
 
         # Ensure update_stock is set
         invoice_doc.update_stock = 1
@@ -1242,16 +1255,13 @@ def submit_invoice(invoice=None, data=None):
         # which checks POS Settings in the update_stock_ledger method
         try:
             invoice_doc.submit()
-            try:
-                from pos_next.pos_next.doctype.cash_payment_register.cash_payment_register import (
-                    register_inline_pos_cash_payments,
-                )
-
-                register_inline_pos_cash_payments(invoice_doc)
-            except Exception:
-                frappe.log_error(
-                    title=f"Failed to register inline cash payments for {invoice_doc.name}",
-                    message=frappe.get_traceback(),
+            if sms_pending_status.get("overridden"):
+                invoice_doc.add_comment(
+                    "Comment",
+                    _("SMS pending-payment checkout override by {0}: {1}").format(
+                        frappe.session.user,
+                        sms_pending_status.get("override_reason"),
+                    ),
                 )
         except Exception as submit_error:
             # If submission fails, cleanup the invoice to prevent stock reservation issues

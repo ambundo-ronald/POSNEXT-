@@ -149,6 +149,18 @@
    "read": 1,
    "role": "Accounts User",
    "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Sales User",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Sales Manager",
+   "write": 1
   }
  ],
  "row_format": "Dynamic",

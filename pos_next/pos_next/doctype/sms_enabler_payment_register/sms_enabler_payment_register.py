@@ -7,7 +7,7 @@ from __future__ import unicode_literals
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, now_datetime
+from frappe.utils import flt, getdate, now_datetime, nowdate
 
 
 class SMSEnablerPaymentRegister(Document):
@@ -98,3 +98,142 @@ class SMSEnablerPaymentRegister(Document):
 			as_dict=True,
 		)
 		return result[0].name if result else None
+
+
+@frappe.whitelist()
+def consume_as_non_sales_receipt(name, reason, credit_account, posting_date=None, remarks=None):
+	if not set(frappe.get_roles()) & {"System Manager", "Sales Manager"}:
+		frappe.throw(
+			_("Only a System Manager or Sales Manager can allocate non-sales receipts."),
+			frappe.PermissionError,
+		)
+
+	payment = frappe.get_doc("SMS Enabler Payment Register", name)
+	if payment.status not in ("Pending", "Matched", "Partially Allocated"):
+		frappe.throw(_("SMS payment {0} is already {1}.").format(payment.name, payment.status))
+	if payment.non_sales_journal_entry:
+		frappe.throw(
+			_("SMS payment {0} is already linked to Journal Entry {1}.").format(
+				payment.name, payment.non_sales_journal_entry
+			)
+		)
+
+	reason = (reason or "").strip()
+	allowed_reasons = {
+		"Director Injection",
+		"Shareholder Loan",
+		"Capital Contribution",
+		"Bank Transfer / Internal Transfer",
+		"Historical Offline Sale - Stock Already Reconciled",
+		"Other Non-Sales Receipt",
+	}
+	if reason not in allowed_reasons:
+		frappe.throw(_("Select a valid non-sales receipt reason."))
+
+	company = payment.company
+	if not company and payment.pos_profile:
+		company = frappe.db.get_value("POS Profile", payment.pos_profile, "company")
+	if not company:
+		frappe.throw(_("Set the company on SMS payment {0} before allocating it.").format(name))
+
+	account = frappe.db.get_value(
+		"Account",
+		credit_account,
+		["name", "company", "is_group", "account_currency", "account_type", "root_type"],
+		as_dict=True,
+	)
+	if not account or account.company != company or account.is_group:
+		frappe.throw(_("Credit account must be a ledger account for company {0}.").format(company))
+	if account.account_type in ("Receivable", "Payable"):
+		frappe.throw(_("Receivable and Payable accounts cannot be used for this allocation."))
+	if account.root_type not in ("Liability", "Equity", "Asset"):
+		frappe.throw(_("Use a Liability, Equity, Cash, or Bank account for non-sales receipts."))
+	if account.root_type == "Asset" and account.account_type not in ("Cash", "Bank"):
+		frappe.throw(_("Only Cash or Bank asset accounts can be used for internal transfers."))
+	if (
+		reason == "Historical Offline Sale - Stock Already Reconciled"
+		and account.root_type != "Liability"
+	):
+		frappe.throw(
+			_("Historical offline sales must be posted to a Liability clearing account for later accounting review.")
+		)
+
+	company_currency = frappe.get_cached_value("Company", company, "default_currency")
+	payment_currency = payment.currency or company_currency
+	if payment_currency != company_currency or account.account_currency != company_currency:
+		frappe.throw(
+			_("Non-sales SMS allocation currently requires company-currency accounts ({0}).").format(
+				company_currency
+			)
+		)
+
+	amount = max(flt(payment.amount) - flt(payment.allocated_amount), 0)
+	if amount <= 0.01:
+		frappe.throw(_("SMS payment {0} has no available amount to allocate.").format(name))
+	if not payment.mode_of_payment:
+		frappe.throw(_("Set the Mode of Payment on SMS payment {0} first.").format(name))
+
+	from pos_next.api.partial_payments import _resolve_payment_account
+
+	bank_account = _resolve_payment_account(payment.mode_of_payment, company)
+	if bank_account == account.name:
+		frappe.throw(_("The debit and credit accounts must be different."))
+	bank_currency = frappe.db.get_value("Account", bank_account, "account_currency")
+	if bank_currency != company_currency:
+		frappe.throw(
+			_("The Mode of Payment account must use company currency {0}.").format(
+				company_currency
+			)
+		)
+
+	journal_entry = frappe.new_doc("Journal Entry")
+	journal_entry.voucher_type = "Journal Entry"
+	journal_entry.company = company
+	journal_entry.posting_date = getdate(posting_date or payment.received_at or nowdate())
+	journal_entry.cheque_no = (payment.transaction_id or payment.name)[:140]
+	journal_entry.cheque_date = journal_entry.posting_date
+	journal_entry.user_remark = _("{0} from SMS Enabler payment {1}. {2}").format(
+		reason,
+		payment.name,
+		(remarks or "").strip(),
+	).strip()
+	journal_entry.append(
+		"accounts",
+		{
+			"account": bank_account,
+			"debit_in_account_currency": amount,
+			"credit_in_account_currency": 0,
+		},
+	)
+	journal_entry.append(
+		"accounts",
+		{
+			"account": account.name,
+			"debit_in_account_currency": 0,
+			"credit_in_account_currency": amount,
+		},
+	)
+	journal_entry.flags.ignore_permissions = True
+	journal_entry.insert()
+	journal_entry.submit()
+
+	payment.company = company
+	payment.allocated_amount = flt(payment.allocated_amount) + amount
+	payment.available_amount = 0
+	payment.status = "Consumed - Non-Sales"
+	payment.non_sales_reason = reason
+	payment.non_sales_credit_account = account.name
+	payment.non_sales_amount = amount
+	payment.non_sales_journal_entry = journal_entry.name
+	payment.non_sales_remarks = (remarks or "").strip()
+	payment.non_sales_processed_by = frappe.session.user
+	payment.non_sales_processed_at = now_datetime()
+	payment.flags.ignore_permissions = True
+	payment.save()
+
+	return {
+		"success": True,
+		"journal_entry": journal_entry.name,
+		"amount": amount,
+		"status": payment.status,
+	}

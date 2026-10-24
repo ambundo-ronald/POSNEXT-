@@ -1746,6 +1746,38 @@ async function handlePaymentCompleted(paymentData) {
 	let checkoutFingerprint = null
 
 	try {
+		let smsPendingOverrideReason = ""
+		if (!offlineStore.isOffline && settingsStore.enforceSmsPendingLimit && settingsStore.smsEnablerEnabled) {
+			const pendingStatus = await call("pos_next.api.smsenabler_mpesa.check_sms_pending_checkout", {
+				pos_profile: cartStore.posProfile,
+			})
+			if (pendingStatus?.blocked) {
+				const access = await getPOSAccess()
+				const canOverride =
+					pendingStatus.allow_manager_override &&
+					access.can_override_sms_pending_limit === true
+				if (canOverride) {
+					smsPendingOverrideReason = (window.prompt(
+						__("{0} SMS payments require reconciliation. Enter a manager override reason, or cancel to reconcile first.", [pendingStatus.pending_count]),
+					) || "").trim()
+					if (!smsPendingOverrideReason) {
+						if (window.confirm(__("Open SMS Enabler Payment Reconciliation now?"))) {
+							window.open(`/app/sms-enabler-payment-reconciliation?company=${encodeURIComponent(shiftStore.profileCompany || "")}&pos_profile=${encodeURIComponent(cartStore.posProfile || "")}`, "_blank")
+						}
+						return
+					}
+				} else {
+					showWarning(
+						__("{0} SMS payments require reconciliation. Reconcile or classify them before completing another sale.", [pendingStatus.pending_count]),
+					)
+					if (window.confirm(__("Open SMS Enabler Payment Reconciliation now?"))) {
+						window.open(`/app/sms-enabler-payment-reconciliation?company=${encodeURIComponent(shiftStore.profileCompany || "")}&pos_profile=${encodeURIComponent(cartStore.posProfile || "")}`, "_blank")
+					}
+					return
+				}
+			}
+		}
+
 		const customerValue = cartStore.customer?.name || cartStore.customer
 		const paymentEntries = Array.isArray(paymentData.payments)
 			? paymentData.payments
@@ -1888,8 +1920,9 @@ async function handlePaymentCompleted(paymentData) {
 
 			const result = await cartStore.submitInvoice({
 				is_credit_sale: Boolean(paymentData.is_credit_sale),
-				submitInlinePayments: !shouldSettleWithPaymentEntries,
+				submitInlinePayments: false,
 				clientTransactionId,
+				smsPendingOverrideReason,
 			})
 
 			if (result) {

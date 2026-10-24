@@ -779,8 +779,10 @@ export function useInvoice() {
 			const rawItems = toRaw(invoiceItems.value)
 			const rawPayments = toRaw(payments.value)
 			const rawSalesTeam = toRaw(salesTeam.value)
-			const inlinePayments =
-				options.submitInlinePayments === false ? [] : rawPayments
+			// POS Next records payments through submitted Payment Entry documents only.
+			// Keeping the Sales Invoice payment table empty prevents invoices from being
+			// marked paid without a traceable accounting document.
+			const inlinePayments = []
 
 			const invoiceData = {
 				doctype: "Sales Invoice",
@@ -863,6 +865,7 @@ export function useInvoice() {
 				change_amount:
 					remainingAmount.value < 0 ? Math.abs(remainingAmount.value) : 0,
 				is_credit_sale: Boolean(options.is_credit_sale),
+				sms_pending_override_reason: options.smsPendingOverrideReason || "",
 			}
 
 			try {

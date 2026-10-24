@@ -12,6 +12,19 @@ SMS_REGISTER_DOCTYPE = "SMS Enabler Payment Register"
 AMOUNT_TOLERANCE = 0.01
 
 
+def _validate_pos_profile_access(pos_profile):
+	roles = set(frappe.get_roles(frappe.session.user) or [])
+	if roles.intersection({"System Manager", "Sales Manager", "Accounts Manager", "Accounts User"}):
+		return
+	if not pos_profile:
+		frappe.throw(_("Select your assigned POS Profile."), frappe.PermissionError)
+	if not frappe.db.exists(
+		"POS Profile User",
+		{"parent": pos_profile, "user": frappe.session.user},
+	):
+		frappe.throw(_("You do not have access to POS Profile {0}.").format(pos_profile), frappe.PermissionError)
+
+
 class SMSEnablerPaymentReconciliation(Document):
 	def save(self, *args, **kwargs):
 		return
@@ -63,6 +76,7 @@ def _parse_names(value):
 def get_outstanding_invoices(
 	company=None, pos_profile=None, customer=None, from_date=None, to_date=None, invoice_name=None
 ):
+	_validate_pos_profile_access(pos_profile)
 	filters = {
 		"docstatus": 1,
 		"is_return": 0,
@@ -105,6 +119,7 @@ def get_outstanding_invoices(
 def get_unreconciled_sms_payments(
 	company=None, pos_profile=None, search=None, from_date=None, to_date=None
 ):
+	_validate_pos_profile_access(pos_profile)
 	from pos_next.pos_next.doctype.pos_settings.pos_settings import get_global_sms_enabler_settings
 
 	profile_mode = not get_global_sms_enabler_settings().get("sms_enabler_enabled")
@@ -209,6 +224,7 @@ def process_sms_enabler_reconciliation(invoice_names, sms_payment_names):
 
 	invoices = [frappe.get_doc("Sales Invoice", name) for name in invoice_names]
 	first_invoice = invoices[0]
+	_validate_pos_profile_access(first_invoice.pos_profile)
 	customer = first_invoice.customer
 	company = first_invoice.company
 	currency = first_invoice.currency
@@ -280,5 +296,42 @@ def process_sms_enabler_reconciliation(invoice_names, sms_payment_names):
 	return {
 		"success": True,
 		"payment_entries": payment_entries,
+		"processed": processed,
+	}
+
+
+@frappe.whitelist()
+def process_non_sales_sms_receipts(
+	sms_payment_names, reason, credit_account, posting_date=None, remarks=None
+):
+	roles = set(frappe.get_roles(frappe.session.user) or [])
+	if not roles.intersection({"System Manager", "Sales Manager"}):
+		frappe.throw(_("Only a System Manager or Sales Manager can classify non-sales receipts."), frappe.PermissionError)
+	from pos_next.pos_next.doctype.sms_enabler_payment_register.sms_enabler_payment_register import (
+		consume_as_non_sales_receipt,
+	)
+
+	sms_payment_names = _parse_names(sms_payment_names)
+	if not sms_payment_names:
+		frappe.throw(_("Please select at least one SMS payment."))
+	if len(sms_payment_names) > 100:
+		frappe.throw(_("Process no more than 100 SMS payments at a time."))
+
+	journal_entries = []
+	processed = []
+	for name in sms_payment_names:
+		result = consume_as_non_sales_receipt(
+			name=name,
+			reason=reason,
+			credit_account=credit_account,
+			posting_date=posting_date,
+			remarks=remarks,
+		)
+		journal_entries.append(result["journal_entry"])
+		processed.append({"sms_payment": name, **result})
+
+	return {
+		"success": True,
+		"journal_entries": journal_entries,
 		"processed": processed,
 	}

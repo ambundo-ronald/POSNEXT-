@@ -24,6 +24,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allow_write_off_change: 0,
 		allow_partial_payment: 0,
 		sms_payment_reconciliation_mode: "Manual",
+		enforce_sms_pending_limit: 0,
+		maximum_pending_sms_payments: 2,
+		allow_sms_pending_manager_override: 1,
 		sms_enabler_enabled: 0,
 		sms_enabler_source: "SMS Enabler",
 		sms_enabler_token: "",
@@ -128,6 +131,15 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	)
 	const smsEnablerEnabled = computed(() =>
 		Boolean(settings.value.sms_enabler_enabled),
+	)
+	const enforceSmsPendingLimit = computed(() =>
+		Boolean(settings.value.enforce_sms_pending_limit),
+	)
+	const maximumPendingSmsPayments = computed(() =>
+		Math.max(Number.parseInt(settings.value.maximum_pending_sms_payments) || 0, 0),
+	)
+	const allowSmsPendingManagerOverride = computed(() =>
+		Boolean(settings.value.allow_sms_pending_manager_override),
 	)
 
 	// Computed - Display Settings
@@ -319,6 +331,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			allow_write_off_change: 0,
 			allow_partial_payment: 0,
 			sms_payment_reconciliation_mode: "Manual",
+			enforce_sms_pending_limit: 0,
+			maximum_pending_sms_payments: 2,
+			allow_sms_pending_manager_override: 1,
 			sms_enabler_enabled: 0,
 			sms_enabler_source: "SMS Enabler",
 			sms_enabler_token: "",
@@ -434,6 +449,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allowPartialPayment,
 		smsPaymentReconciliationMode,
 		smsEnablerEnabled,
+		enforceSmsPendingLimit,
+		maximumPendingSmsPayments,
+		allowSmsPendingManagerOverride,
 
 		// Computed - Display Settings
 		defaultCardView,

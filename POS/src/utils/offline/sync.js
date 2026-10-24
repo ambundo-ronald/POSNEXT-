@@ -116,6 +116,19 @@ export const syncOfflineInvoices = async () => {
 			// Transform items: map 'quantity' to 'qty' for ERPNext compatibility
 			// Offline storage uses 'quantity' (cart format) but server expects 'qty'
 			const invoiceData = { ...invoice.data }
+			const offlinePayments = Array.isArray(invoiceData.payments)
+				? invoiceData.payments
+					.filter((payment) => Number.parseFloat(payment.amount || 0) > 0)
+					.map((payment, index) => ({
+						mode_of_payment: payment.mode_of_payment,
+						amount: Number.parseFloat(payment.amount || 0),
+						account: payment.account,
+						reference_no:
+							payment.reference_no ||
+							`OFFLINE-${invoiceData.posa_client_transaction_id || invoice.id}-${index + 1}`,
+					}))
+				: []
+			invoiceData.payments = []
 			if (invoiceData.items && Array.isArray(invoiceData.items)) {
 				invoiceData.items = invoiceData.items.map((item) => ({
 					...item,
@@ -132,12 +145,19 @@ export const syncOfflineInvoices = async () => {
 				}),
 			})
 
-			if (response.message || response.name) {
+			const invoiceName = response.name || response.message?.name || response.message
+			if (invoiceName) {
+				if (offlinePayments.length) {
+					await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {
+						invoice_name: invoiceName,
+						payments: offlinePayments,
+					})
+				}
 				// Mark as synced
 				await db.invoice_queue.update(invoice.id, { synced: true })
 				successCount++
 				console.log(
-					`Invoice ${invoice.id} synced successfully as ${response.name || response.message}`,
+					`Invoice ${invoice.id} synced successfully as ${invoiceName}`,
 				)
 			}
 		} catch (error) {

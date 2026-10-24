@@ -30,6 +30,8 @@ class POSSettings(Document):
 
 		if self.sms_payment_reconciliation_mode not in ("Manual", "Suggested", "Auto"):
 			frappe.throw("SMS Payment Reconciliation must be Manual, Suggested, or Auto")
+		if cint(self.maximum_pending_sms_payments) < 0:
+			frappe.throw("Maximum Pending SMS Payments cannot be negative")
 
 		seen_credit_users = set()
 		for row in self.get("credit_sale_users") or []:
@@ -416,6 +418,9 @@ def create_default_settings(pos_profile):
 	doc.pos_profile = pos_profile
 	doc.enabled = 1
 	doc.sms_payment_reconciliation_mode = "Manual"
+	doc.enforce_sms_pending_limit = 0
+	doc.maximum_pending_sms_payments = 2
+	doc.allow_sms_pending_manager_override = 1
 	doc.insert()
 
 	settings = doc.as_dict()

@@ -649,6 +649,25 @@
 								{{ __('Tick to add, untick to remove') }}
 							</div>
 						</div>
+
+						<label
+							v-if="smsEnablerExcessAmount > 0"
+							class="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3"
+						>
+							<input
+								v-model="returnSmsExcessAsCashChange"
+								type="checkbox"
+								class="mt-0.5 h-4 w-4 accent-amber-600"
+							/>
+							<div class="min-w-0">
+								<div class="text-xs font-semibold text-amber-900">
+									{{ __('Return Excess as Cash Change') }}
+								</div>
+								<div class="mt-0.5 text-[11px] text-amber-800">
+									{{ __('Return {0} in cash and fully consume the selected SMS payment.', [formatCurrency(smsEnablerExcessAmount)]) }}
+								</div>
+							</div>
+						</label>
 					</div>
 				</div>
 
@@ -1116,6 +1135,7 @@ const smsEnablerPayments = ref([])
 const smsEnablerSearch = ref("")
 const selectedSmsEnablerPayments = ref([])
 const smsEnablerAutoApplied = ref(false)
+const returnSmsExcessAsCashChange = ref(false)
 let smsEnablerSearchTimeout = null
 
 // Additional discount state
@@ -1939,6 +1959,19 @@ const appliedSmsEnablerTotal = computed(() =>
 	round2(appliedSmsEnablerPayments.value.reduce((sum, entry) => sum + (entry.amount || 0), 0)),
 )
 
+const smsEnablerExcessAmount = computed(() =>
+	round2(
+		appliedSmsEnablerPayments.value.reduce(
+			(sum, entry) =>
+				sum + Math.max(
+					(Number.parseFloat(entry.sms_available_amount) || 0) - getPaymentAmount(entry),
+					0,
+				),
+			0,
+		),
+	),
+)
+
 const smsReconciliationMode = computed(
 	() => settingsStore.smsPaymentReconciliationMode || "Manual",
 )
@@ -2102,6 +2135,7 @@ watch(show, (newVal) => {
 		smsEnablerPendingCount.value = 0
 		selectedSmsEnablerPayments.value = []
 		smsEnablerAutoApplied.value = false
+		returnSmsExcessAsCashChange.value = false
 
 		// Debug logging
 		console.log('[PaymentDialog] Dialog opened with props:', {
@@ -2385,6 +2419,9 @@ function completePayment() {
 				transaction_id: entry.sms_transaction_id,
 				amount: entry.amount,
 				mode_of_payment: entry.mode_of_payment,
+				return_excess_as_cash_change:
+					returnSmsExcessAsCashChange.value &&
+					(Number.parseFloat(entry.sms_available_amount) || 0) > entry.amount,
 			})),
 	}
 
