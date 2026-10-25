@@ -23,7 +23,7 @@
 					</div>
 					<Button
 						variant="subtle"
-						@click="loadInvoices"
+						@click="loadInvoices()"
 						:loading="invoicesResource.loading"
 						:title="__('Refresh')"
 					>
@@ -34,7 +34,7 @@
 				</div>
 
 				<!-- Invoices List -->
-				<div v-if="invoicesResource.loading" class="text-center py-8">
+				<div v-if="invoicesResource.loading && page === 0" class="text-center py-8">
 					<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
 					<p class="mt-3 text-xs text-gray-500">{{ __('Loading invoices...') }}</p>
 				</div>
@@ -123,8 +123,8 @@
 				</div>
 
 				<!-- Load More -->
-				<div v-if="hasMore && !invoicesResource.loading" class="text-center">
-					<Button variant="subtle" @click="loadMore">
+				<div v-if="hasMore && invoices.length && !(invoicesResource.loading && page === 0)" class="text-center">
+					<Button variant="subtle" :loading="invoicesResource.loading" @click="loadMore">
 						{{ __('Load More') }}
 					</Button>
 				</div>
@@ -196,19 +196,27 @@ const invoicesResource = createResource({
 				"is_return",
 			],
 			order_by: "creation desc",
-			start: 0,
-			page_length: 100,
+			limit_start: page.value * pageSize,
+			limit_page_length: pageSize,
 		}
 	},
 	auto: false,
 	onSuccess(data) {
-		console.log("Invoices loaded:", data)
 		if (data && Array.isArray(data)) {
 			// For simplicity, show item count as 0 initially
-			invoices.value = data.map((inv) => ({
+			const rows = data.map((inv) => ({
 				...inv,
 				items_count: 0,
 			}))
+
+			if (page.value === 0) {
+				invoices.value = rows
+			} else {
+				// New sales shift the offset, so skip rows already shown
+				const loaded = new Set(invoices.value.map((inv) => inv.name))
+				invoices.value = [...invoices.value, ...rows.filter((inv) => !loaded.has(inv.name))]
+			}
+			hasMore.value = data.length === pageSize
 		}
 	},
 	onError(error) {
@@ -221,8 +229,8 @@ watch(
 	() => props.modelValue,
 	(val) => {
 		show.value = val
-		if (val && props.posProfile) {
-			invoicesResource.reload()
+		if (val) {
+			loadInvoices()
 		}
 	},
 )
@@ -242,14 +250,14 @@ const filteredInvoices = computed(() => {
 	)
 })
 
-function loadInvoices() {
-	if (props.posProfile) {
-		invoicesResource.reload()
-	}
+function loadInvoices(append = false) {
+	if (!props.posProfile) return
+
+	page.value = append ? page.value + 1 : 0
+	invoicesResource.reload()
 }
 
 function loadMore() {
-	page.value++
 	loadInvoices(true)
 }
 
