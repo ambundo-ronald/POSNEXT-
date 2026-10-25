@@ -170,12 +170,30 @@ def consume_as_non_sales_receipt(name, reason, credit_account, posting_date=None
 	amount = max(flt(payment.amount) - flt(payment.allocated_amount), 0)
 	if amount <= 0.01:
 		frappe.throw(_("SMS payment {0} has no available amount to allocate.").format(name))
-	if not payment.mode_of_payment:
-		frappe.throw(_("Set the Mode of Payment on SMS payment {0} first.").format(name))
+	from pos_next.api.smsenabler_mpesa import (
+		_get_phone_mop_for_company,
+		_resolve_mapped_mode_of_payment,
+	)
+
+	# Older SMS payments may predate sender mappings; resolve the same way as
+	# invoice allocation does.
+	mode_of_payment = (
+		payment.mode_of_payment
+		or _resolve_mapped_mode_of_payment(
+			sender=payment.sender, source=payment.source, message=payment.raw_message
+		)
+		or _get_phone_mop_for_company(company)
+	)
+	if not mode_of_payment:
+		frappe.throw(
+			_(
+				"Set the Mode of Payment on SMS payment {0}, or configure an enabled Phone Mode of Payment for company {1}."
+			).format(name, company)
+		)
 
 	from pos_next.api.partial_payments import _resolve_payment_account
 
-	bank_account = _resolve_payment_account(payment.mode_of_payment, company)
+	bank_account = _resolve_payment_account(mode_of_payment, company)
 	if bank_account == account.name:
 		frappe.throw(_("The debit and credit accounts must be different."))
 	bank_currency = frappe.db.get_value("Account", bank_account, "account_currency")
@@ -218,6 +236,7 @@ def consume_as_non_sales_receipt(name, reason, credit_account, posting_date=None
 	journal_entry.submit()
 
 	payment.company = company
+	payment.mode_of_payment = mode_of_payment
 	payment.allocated_amount = flt(payment.allocated_amount) + amount
 	payment.available_amount = 0
 	payment.status = "Consumed - Non-Sales"
