@@ -1494,7 +1494,7 @@ def get_invoices(pos_profile, limit=100):
 		WHERE
 			pos_profile = %(pos_profile)s
 			AND docstatus = 1
-			AND is_pos = 1
+			AND (is_pos = 1 OR COALESCE(posa_client_transaction_id, '') != '')
 		ORDER BY
 			posting_date DESC,
 			posting_time DESC
@@ -1616,7 +1616,7 @@ def _get_item_group_ratio_join():
 			INNER JOIN `tabItem Group` ig_ratio ON ig_ratio.name = sii_ratio.item_group
 			WHERE si_ratio.pos_profile = %(pos_profile)s
 				AND si_ratio.docstatus = 1
-				AND si_ratio.is_pos = 1
+				AND (si_ratio.is_pos = 1 OR COALESCE(si_ratio.posa_client_transaction_id, '') != '')
 				AND si_ratio.posting_date BETWEEN %(from_date)s AND %(to_date)s
 				AND ig_ratio.lft >= %(item_group_lft)s
 				AND ig_ratio.rgt <= %(item_group_rgt)s
@@ -1683,7 +1683,7 @@ def _get_sales_report_payment_export(
 		FROM `tabSales Invoice` si
 		WHERE si.pos_profile = %(pos_profile)s
 			AND si.docstatus = 1
-			AND si.is_pos = 1
+			AND (si.is_pos = 1 OR COALESCE(si.posa_client_transaction_id, '') != '')
 			AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
 			{sales_person_filter}
 			{item_group_filter}
@@ -1712,7 +1712,7 @@ def _get_sales_report_payment_export(
 		{item_group_ratio_join}
 		WHERE si.pos_profile = %(pos_profile)s
 			AND si.docstatus = 1
-			AND si.is_pos = 1
+			AND (si.is_pos = 1 OR COALESCE(si.posa_client_transaction_id, '') != '')
 			AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
 			AND sip.amount != 0
 			{sales_person_filter}
@@ -1759,7 +1759,7 @@ def _get_sales_report_payment_export(
 		{item_group_ratio_join}
 		WHERE si.pos_profile = %(pos_profile)s
 			AND si.docstatus = 1
-			AND si.is_pos = 1
+			AND (si.is_pos = 1 OR COALESCE(si.posa_client_transaction_id, '') != '')
 			AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
 			AND pe.docstatus = 1
 			AND per.allocated_amount != 0
@@ -2127,7 +2127,7 @@ def get_sales_report(
 	filters = f"""
 		si.pos_profile = %(pos_profile)s
 		AND si.docstatus = 1
-		AND si.is_pos = 1
+		AND (si.is_pos = 1 OR COALESCE(si.posa_client_transaction_id, '') != '')
 		AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
 		AND (
 			%(sales_person)s = ''
@@ -2151,7 +2151,7 @@ def get_sales_report(
 			AND sales_team.parenttype = 'Sales Invoice'
 		WHERE si.pos_profile = %(pos_profile)s
 			AND si.docstatus = 1
-			AND si.is_pos = 1
+			AND (si.is_pos = 1 OR COALESCE(si.posa_client_transaction_id, '') != '')
 		ORDER BY sales_team.sales_person
 		""",
 		{"pos_profile": pos_profile},
@@ -2165,7 +2165,7 @@ def get_sales_report(
 		INNER JOIN `tabSales Invoice Item` sii ON sii.parent = si.name
 		WHERE si.pos_profile = %(pos_profile)s
 			AND si.docstatus = 1
-			AND si.is_pos = 1
+			AND (si.is_pos = 1 OR COALESCE(si.posa_client_transaction_id, '') != '')
 			AND IFNULL(sii.item_group, '') != ''
 		ORDER BY sii.item_group
 		""",
@@ -2529,7 +2529,7 @@ def get_returnable_invoices(limit=50):
             AND (ret_item.sales_invoice_item = si_item.name OR ret_item.item_code = si_item.item_code)
         WHERE si.docstatus = 1
             AND si.is_return = 0
-            AND si.is_pos = 1
+            AND (si.is_pos = 1 OR COALESCE(si.posa_client_transaction_id, '') != '')
         GROUP BY si.name
         HAVING total_original_qty > total_returned_qty
         ORDER BY si.posting_date DESC, si.creation DESC

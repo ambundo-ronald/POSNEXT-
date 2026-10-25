@@ -477,7 +477,7 @@ def get_credit_sale_summary(pos_profile):
 		WHERE
 			pos_profile = %(pos_profile)s
 			AND docstatus = 1
-			AND is_pos = 1
+			AND (is_pos = 1 OR COALESCE(posa_client_transaction_id, '') != '')
 			AND outstanding_amount > 0
 			AND is_return = 0
 	""", {"pos_profile": pos_profile}, as_dict=True)
@@ -532,7 +532,7 @@ def get_credit_invoices(pos_profile, limit=100):
 		WHERE
 			pos_profile = %(pos_profile)s
 			AND docstatus = 1
-			AND is_pos = 1
+			AND (is_pos = 1 OR COALESCE(posa_client_transaction_id, '') != '')
 			AND outstanding_amount > 0
 			AND is_return = 0
 		ORDER BY

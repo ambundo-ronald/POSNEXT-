@@ -725,10 +725,13 @@ def get_partial_paid_invoices(pos_profile: str, limit: int = DEFAULT_INVOICE_LIM
         filters={
             "pos_profile": pos_profile,
             "docstatus": 1,
-            "is_pos": 1,
             "outstanding_amount": [">", 0],
             "paid_amount": [">", 0],
             "is_return": 0,
+        },
+        or_filters={
+            "is_pos": 1,
+            "posa_client_transaction_id": ["!=", ""],
         },
         fields=[
             "name",
@@ -800,9 +803,12 @@ def get_unpaid_invoices(pos_profile: str, limit: int = DEFAULT_INVOICE_LIMIT) ->
         filters={
             "pos_profile": pos_profile,
             "docstatus": 1,
-            "is_pos": 1,
             "outstanding_amount": [">", 0],
             "is_return": 0,
+        },
+        or_filters={
+            "is_pos": 1,
+            "posa_client_transaction_id": ["!=", ""],
         },
         fields=[
             "name",
@@ -1150,7 +1156,7 @@ def get_partial_payment_summary(pos_profile: str) -> Dict:
         FROM `tabSales Invoice`
         WHERE pos_profile = %(pos_profile)s
             AND docstatus = 1
-            AND is_pos = 1
+            AND (is_pos = 1 OR COALESCE(posa_client_transaction_id, '') != '')
             AND outstanding_amount > 0
             AND paid_amount > 0
             AND is_return = 0
@@ -1212,7 +1218,7 @@ def get_unpaid_summary(pos_profile: str) -> Dict:
         FROM `tabSales Invoice`
         WHERE pos_profile = %(pos_profile)s
             AND docstatus = 1
-            AND is_pos = 1
+            AND (is_pos = 1 OR COALESCE(posa_client_transaction_id, '') != '')
             AND outstanding_amount > 0
             AND is_return = 0
         """,

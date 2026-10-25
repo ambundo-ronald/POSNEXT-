@@ -100,7 +100,7 @@ def get_data(filters, from_date, to_date):
 def get_invoice_conditions(filters, from_date, to_date):
 	conditions = [
 		"si.docstatus = 1",
-		"si.is_pos = 1",
+		"(si.is_pos = 1 OR COALESCE(si.posa_client_transaction_id, '') != '')",
 		"si.posting_date BETWEEN %(from_date)s AND %(to_date)s",
 	]
 	params = {
