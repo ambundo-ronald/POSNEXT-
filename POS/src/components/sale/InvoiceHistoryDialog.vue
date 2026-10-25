@@ -176,8 +176,13 @@ const invoicesResource = createResource({
 		return {
 			doctype: "Sales Invoice",
 			filters: {
-				is_pos: 1,
 				...(props.posProfile && { pos_profile: props.posProfile }),
+			},
+			// Payment Entry checkouts are submitted with is_pos = 0 but keep
+			// their POS Next client transaction ID.
+			or_filters: {
+				is_pos: 1,
+				posa_client_transaction_id: ["!=", ""],
 			},
 			fields: [
 				"name",
