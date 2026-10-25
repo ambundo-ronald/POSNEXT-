@@ -1494,7 +1494,6 @@ def get_invoices(pos_profile, limit=100):
 		WHERE
 			pos_profile = %(pos_profile)s
 			AND docstatus = 1
-			AND (is_pos = 1 OR COALESCE(posa_client_transaction_id, '') != '')
 		ORDER BY
 			posting_date DESC,
 			posting_time DESC
