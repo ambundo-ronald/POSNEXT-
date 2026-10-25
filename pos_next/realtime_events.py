@@ -13,6 +13,14 @@ from frappe import _
 from pos_next.api.items import get_stock_quantities
 
 
+def _is_pos_next_invoice(doc):
+	"""
+	POS Next checkouts settle through Payment Entries and are submitted with
+	is_pos = 0, so the client transaction ID also identifies POS invoices.
+	"""
+	return bool(doc.get("is_pos") or doc.get("posa_client_transaction_id"))
+
+
 def emit_stock_update_event(doc, method=None):
 	"""
 	Emit real-time stock update event when Sales Invoice is submitted.
@@ -27,8 +35,8 @@ def emit_stock_update_event(doc, method=None):
 	if not doc.update_stock:
 		return
 
-	# Skip if not a POS invoice (check if field exists first)
-	if hasattr(doc, 'is_pos') and not doc.is_pos:
+	# Skip if not a POS invoice
+	if not _is_pos_next_invoice(doc):
 		return
 
 	try:
@@ -111,7 +119,7 @@ def emit_invoice_created_event(doc, method=None):
 		doc: Sales Invoice document
 		method: Hook method name
 	"""
-	if not doc.is_pos:
+	if not _is_pos_next_invoice(doc):
 		return
 
 	try:
