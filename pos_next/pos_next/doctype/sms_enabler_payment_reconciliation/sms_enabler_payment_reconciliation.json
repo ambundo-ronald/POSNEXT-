@@ -10,6 +10,9 @@
   "pos_profile",
   "customer",
   "invoice_name",
+  "column_break_details",
+  "from_posting_date",
+  "to_posting_date",
   "filters_section",
   "from_invoice_date",
   "to_invoice_date",
@@ -53,6 +56,21 @@
    "fieldtype": "Link",
    "label": "Invoice",
    "options": "Sales Invoice"
+  },
+  {
+   "fieldname": "column_break_details",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Filters both invoices and SMS payments. The detailed date filters below take priority when set.",
+   "fieldname": "from_posting_date",
+   "fieldtype": "Date",
+   "label": "From Posting Date"
+  },
+  {
+   "fieldname": "to_posting_date",
+   "fieldtype": "Date",
+   "label": "To Posting Date"
   },
   {
    "collapsible": 1,
@@ -116,7 +134,7 @@
  "is_virtual": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-05-31 00:00:00.000000",
+ "modified": "2026-10-25 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "SMS Enabler Payment Reconciliation",

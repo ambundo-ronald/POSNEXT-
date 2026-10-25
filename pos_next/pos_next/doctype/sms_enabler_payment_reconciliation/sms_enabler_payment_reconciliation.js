@@ -62,8 +62,8 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 				pos_profile: frm.doc.pos_profile || "",
 				customer: frm.doc.customer || "",
 				invoice_name: frm.doc.invoice_name || "",
-				from_date: frm.doc.from_invoice_date || "",
-				to_date: frm.doc.to_invoice_date || "",
+				from_date: frm.doc.from_invoice_date || frm.doc.from_posting_date || "",
+				to_date: frm.doc.to_invoice_date || frm.doc.to_posting_date || "",
 			},
 			callback(response) {
 				const invoices = response.message || [];
@@ -89,8 +89,8 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 				company: frm.doc.company || "",
 				pos_profile: frm.doc.pos_profile || "",
 				search: frm.doc.sms_search || "",
-				from_date: frm.doc.from_sms_payment_date || "",
-				to_date: frm.doc.to_sms_payment_date || "",
+				from_date: frm.doc.from_sms_payment_date || frm.doc.from_posting_date || "",
+				to_date: frm.doc.to_sms_payment_date || frm.doc.to_posting_date || "",
 			},
 			callback(response) {
 				const payments = response.message || [];
