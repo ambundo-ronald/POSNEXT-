@@ -362,6 +362,18 @@ def _get_sms_payment_amounts(payment):
 	return total, allocated, available
 
 
+def _get_payment_entry_unallocated(payment_entry):
+	"""Unallocated balance on a submitted Payment Entry (0 if missing/not submitted)."""
+	if not payment_entry:
+		return 0
+	values = frappe.db.get_value(
+		"Payment Entry", payment_entry, ["docstatus", "unallocated_amount"], as_dict=True
+	)
+	if not values or values.docstatus != 1:
+		return 0
+	return max(flt(values.unallocated_amount), 0)
+
+
 def _find_payment_entry_for_sms(invoice, transaction_id=None, amount=None):
 	if not invoice:
 		return None
@@ -395,7 +407,10 @@ def _find_payment_entry_for_sms(invoice, transaction_id=None, amount=None):
 def _create_sms_payment_entry(payment, invoice_doc, allocated_amount, mode_of_payment):
 	from pos_next.api.partial_payments import _resolve_payment_account
 
-	total_amount, _allocated_amount, _available_amount = _get_sms_payment_amounts(payment)
+	# Only the still-unallocated part of the SMS payment may be booked as a new
+	# Payment Entry; using the original total double-counts money already
+	# received through an earlier Payment Entry.
+	_total_amount, _allocated_amount, available_amount = _get_sms_payment_amounts(payment)
 	posting_date = max(
 		getdate(payment.received_at) if payment.received_at else getdate(nowdate()),
 		getdate(invoice_doc.posting_date),
@@ -414,8 +429,8 @@ def _create_sms_payment_entry(payment, invoice_doc, allocated_amount, mode_of_pa
 		company=invoice_doc.company,
 		invoice=invoice_doc,
 	)
-	pe.paid_amount = total_amount
-	pe.received_amount = total_amount
+	pe.paid_amount = available_amount
+	pe.received_amount = available_amount
 	pe.paid_from_account_currency = invoice_doc.currency
 	pe.paid_to_account_currency = invoice_doc.currency
 	pe.reference_no = (payment.transaction_id or payment.name)[:140]
@@ -602,9 +617,20 @@ def _apply_sms_payment_to_invoice(payment, invoice_doc, requested_amount=0):
 			)
 		)
 
-	if payment.payment_entry:
+	# Reuse the linked Payment Entry only if it really holds enough unallocated
+	# balance. A POS checkout can link the register to the (fully allocated)
+	# Payment Entry that settled the first invoice; in that case the leftover
+	# was never booked, so book it now with a new Payment Entry.
+	pe_balance = _get_payment_entry_unallocated(payment.payment_entry)
+	if payment.payment_entry and pe_balance + 0.01 >= to_allocate:
 		payment_entry = _allocate_existing_payment_entry(
 			payment.payment_entry, invoice_doc, to_allocate
+		)
+	elif payment.payment_entry and pe_balance > 0.01:
+		frappe.throw(
+			_(
+				"Payment Entry {0} has only {1} unallocated, but SMS payment {2} shows {3} available. Please correct it manually."
+			).format(payment.payment_entry, pe_balance, payment.name, available_amount)
 		)
 	else:
 		payment_entry = _create_sms_payment_entry(
@@ -1207,18 +1233,29 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 		mode_of_payment = payment.mode_of_payment or mode_of_payment
 		new_allocated = min(allocated_amount + allocated_now, total_amount)
 		new_available = max(total_amount - new_allocated, 0)
-		payment_entry = payment.payment_entry or _find_payment_entry_for_sms(
+		# Keep apart the Payment Entry that settled this invoice and the one that
+		# holds the leftover SMS balance. Linking the register to the settling
+		# entry (fully allocated) leaves the remainder unbooked and later
+		# reconciliation fails with "Allocated amount cannot be greater than
+		# unadjusted amount".
+		settled_payment_entry = _find_payment_entry_for_sms(
 			invoice,
 			transaction_id=payment.transaction_id or payment.name,
 			amount=allocated_now,
 		)
-		if new_available > 0.01 and not payment_entry:
-			payment_entry = _create_sms_advance_payment_entry(
+		balance_payment_entry = (
+			payment.payment_entry
+			if _get_payment_entry_unallocated(payment.payment_entry) > 0.01
+			else None
+		)
+		if new_available > 0.01 and not balance_payment_entry:
+			balance_payment_entry = _create_sms_advance_payment_entry(
 				payment,
 				invoice_doc,
 				new_available,
 				mode_of_payment,
 			)
+		payment_entry = balance_payment_entry or settled_payment_entry or payment.payment_entry
 		cash_change_payment_entry = None
 		excess_payment_entry = None
 		if excess_to_return > 0.01:

@@ -375,7 +375,13 @@
 									</div>
 								</div>
 								<div class="text-end flex-shrink-0">
-									<div class="text-sm font-bold text-gray-900">{{ formatCurrency(payment.amount) }}</div>
+									<div class="text-sm font-bold text-gray-900">{{ formatCurrency(getSmsAvailableAmount(payment)) }}</div>
+									<div
+										v-if="Number(payment.allocated_amount || 0) > 0.01"
+										class="text-xs text-amber-700"
+									>
+										{{ __('of {0}', [formatCurrency(payment.amount)]) }}
+									</div>
 									<div class="text-xs text-gray-500">{{ formatPaymentReceivedAt(payment.received_at) }}</div>
 								</div>
 							</button>
@@ -516,8 +522,17 @@ const selectedSmsPayments = computed(() => {
 })
 
 const selectedSmsTotal = computed(() => {
-	return selectedSmsPayments.value.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+	return selectedSmsPayments.value.reduce((sum, payment) => sum + getSmsAvailableAmount(payment), 0)
 })
+
+// SMS payments can be partly used already; only the remaining balance can be applied.
+function getSmsAvailableAmount(payment) {
+	const available = payment?.available_amount
+	if (available !== undefined && available !== null && available !== "") {
+		return Number(available) || 0
+	}
+	return Number(payment?.amount || 0)
+}
 
 const canReconcileCashPayment = computed(() => {
 	const amount = Number(cashPaymentAmount.value || 0)
