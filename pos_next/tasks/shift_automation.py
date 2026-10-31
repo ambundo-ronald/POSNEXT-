@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta
 
 import frappe
 from frappe.utils import cint, get_time, getdate, now_datetime, nowdate, nowtime
@@ -16,17 +17,17 @@ def run_shift_automation():
 
 	current_date = nowdate()
 
-	if _is_due(settings, "enable_auto_shift_close", "auto_shift_close_time", "last_auto_shift_close_date"):
-		result = close_open_shifts()
-		if result["failed"] == 0:
-			frappe.db.set_single_value(
-				GLOBAL_SETTINGS_DOCTYPE,
-				"last_auto_shift_close_date",
-				current_date,
-				update_modified=False,
-			)
+	close_cutoff = _get_due_close_cutoff(settings)
+	if close_cutoff:
+		queued = close_open_shifts(close_cutoff)
+		frappe.db.set_single_value(
+			GLOBAL_SETTINGS_DOCTYPE,
+			"last_auto_shift_close_date",
+			close_cutoff.date(),
+			update_modified=False,
+		)
 		frappe.logger("pos_next").info(
-			f"Auto shift close completed: {result['closed']} shift(s) closed, {result['failed']} failed"
+			f"Auto shift close: {queued} shift(s) opened before {close_cutoff} queued for closing"
 		)
 
 	if _is_due(settings, "enable_auto_shift_open", "auto_shift_open_time", "last_auto_shift_open_date"):
@@ -54,42 +55,84 @@ def _is_due(settings, enabled_field, time_field, last_run_field):
 	return get_time(nowtime()) >= get_time(target_time)
 
 
-def close_open_shifts():
-	from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import (
-		make_closing_shift_from_opening,
-	)
+def _get_due_close_cutoff(settings):
+	"""
+	Return the most recent scheduled close time if it has not been handled yet.
 
+	The scheduler runs every 5 minutes, so a close time such as 23:59:59 is
+	never hit exactly. Once the time passes (or the day rolls over), the
+	missed run is caught up on the next tick.
+	"""
+	if not cint(settings.get("enable_auto_shift_close")):
+		return None
+
+	target_time = settings.get("auto_shift_close_time")
+	if not target_time:
+		return None
+
+	now = now_datetime()
+	cutoff = datetime.combine(now.date(), get_time(target_time))
+	if now < cutoff:
+		cutoff -= timedelta(days=1)
+
+	last_run = settings.get("last_auto_shift_close_date")
+	if last_run and getdate(last_run) >= cutoff.date():
+		return None
+
+	return cutoff
+
+
+def close_open_shifts(cutoff):
+	"""Queue a closing job for each shift opened before the cutoff."""
 	open_shifts = frappe.get_all(
 		"POS Opening Shift",
 		filters={
 			"docstatus": 1,
 			"status": "Open",
+			"period_start_date": ["<", cutoff],
 		},
-		fields=["name"],
+		pluck="name",
 		order_by="period_start_date asc",
 	)
 
-	closed_count = 0
-	failed_count = 0
-	for row in open_shifts:
-		try:
-			opening_doc = frappe.get_doc("POS Opening Shift", row.name)
-			closing_doc = make_closing_shift_from_opening(
-				json.dumps(opening_doc.as_dict(), default=str)
-			)
-			_set_sales_amounts_as_closing_amounts(closing_doc)
-			closing_doc.flags.ignore_permissions = True
-			closing_doc.save()
-			closing_doc.submit()
-			closed_count += 1
-		except Exception:
-			failed_count += 1
-			frappe.log_error(
-				title=f"Auto shift close failed for {row.name}",
-				message=frappe.get_traceback(),
-			)
+	# One job per shift so a large shift cannot time out or block the rest.
+	for name in open_shifts:
+		frappe.enqueue(
+			"pos_next.tasks.shift_automation.close_shift",
+			queue="long",
+			timeout=3600,
+			job_id=f"pos_next_auto_close::{name}",
+			deduplicate=True,
+			opening_shift=name,
+		)
 
-	return {"closed": closed_count, "failed": failed_count}
+	return len(open_shifts)
+
+
+def close_shift(opening_shift):
+	from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import (
+		make_closing_shift_from_opening,
+	)
+
+	try:
+		opening_doc = frappe.get_doc("POS Opening Shift", opening_shift)
+		if opening_doc.docstatus != 1 or opening_doc.status != "Open":
+			return
+
+		closing_doc = make_closing_shift_from_opening(
+			json.dumps(opening_doc.as_dict(), default=str)
+		)
+		_set_sales_amounts_as_closing_amounts(closing_doc)
+		closing_doc.flags.ignore_permissions = True
+		closing_doc.save()
+		closing_doc.submit()
+		frappe.db.commit()
+	except Exception:
+		frappe.db.rollback()
+		frappe.log_error(
+			title=f"Auto shift close failed for {opening_shift}",
+			message=frappe.get_traceback(),
+		)
 
 
 def _set_sales_amounts_as_closing_amounts(closing_doc):
