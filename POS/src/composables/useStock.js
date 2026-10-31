@@ -16,7 +16,7 @@ export function useStock() {
 	 *
 	 * @param {number|null|undefined} qty - The stock quantity
 	 * @param {number} lowStockThreshold - Threshold for low stock warning (default: 10)
-	 * @returns {Object} Stock status with level, color, textColor, and label
+	 * @returns {Object} Stock status with level, color, textColor, qtyColor (plain text, no badge), and label
 	 */
 	function getStockStatus(qty, lowStockThreshold = 10) {
 		const quantity = Math.floor(qty !== undefined && qty !== null ? qty : 0)
@@ -26,6 +26,7 @@ export function useStock() {
 				level: "negative",
 				color: "bg-red-500",
 				textColor: "text-white",
+				qtyColor: "text-red-600",
 				label: __("Negative Stock"),
 			}
 		}
@@ -35,6 +36,7 @@ export function useStock() {
 				level: "out",
 				color: "bg-red-500",
 				textColor: "text-white",
+				qtyColor: "text-red-600",
 				label: __("Out of Stock"),
 			}
 		}
@@ -44,6 +46,7 @@ export function useStock() {
 				level: "low",
 				color: "bg-amber-500",
 				textColor: "text-white",
+				qtyColor: "text-amber-600",
 				label: __("Low Stock"),
 			}
 		}
@@ -52,6 +55,7 @@ export function useStock() {
 			level: "safe",
 			color: "bg-green-500",
 			textColor: "text-white",
+			qtyColor: "text-green-600",
 			label: __("In Stock"),
 		}
 	}

@@ -573,11 +573,8 @@
 									v-if="item.is_stock_item || item.is_bundle"
 									@click.stop="showWarehouseAvailability(item)"
 									:class="[
-										'inline-block px-1.5 sm:px-3 py-0.5 sm:py-1.5 rounded-md shadow-sm',
-										'text-[10px] sm:text-sm font-bold cursor-pointer',
-										'hover:scale-105 hover:shadow-md transition-all duration-200',
-										getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).color,
-										getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).textColor
+										'inline-block text-xs sm:text-sm font-bold cursor-pointer hover:underline',
+										getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).qtyColor
 									]"
 									:title="__('Click to view availability in other warehouses')"
 								>
