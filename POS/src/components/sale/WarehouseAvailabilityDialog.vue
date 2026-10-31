@@ -99,7 +99,7 @@
 									'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
 									(item.actual_qty || 0) > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
 								]">
-									{{ Math.floor(item.actual_qty || 0) }} {{ item.stock_uom || __('Nos') }}
+									{{ formatStockQty(item.actual_qty) }} {{ item.stock_uom || __('Nos') }}
 								</span>
 								<!-- Price if available -->
 								<span v-if="item.rate" class="text-xs text-gray-500">
@@ -356,11 +356,11 @@
 												'text-base font-bold',
 												warehouse.available_qty > 0 ? 'text-green-600' : 'text-red-500'
 											]">
-												{{ Math.floor(warehouse.available_qty) }} {{ getVariantUom(warehouse.item_code) }}
+												{{ formatStockQty(warehouse.available_qty) }} {{ getVariantUom(warehouse.item_code) }}
 											</div>
 											<div class="text-xs text-gray-500 mt-0.5">
 												<span v-if="warehouse.reserved_qty > 0" class="text-orange-600">
-													{{ __( '{0} reserved', [Math.floor(warehouse.reserved_qty)]) }}
+													{{ __( '{0} reserved', [formatStockQty(warehouse.reserved_qty)]) }}
 												</span>
 												<span v-if="warehouse.rate" class="text-gray-500">{{ formatPrice(warehouse.rate) }}</span>
 												<span v-else>{{ __('Available') }}</span>
@@ -371,7 +371,7 @@
 									<div v-if="warehouse.actual_qty !== warehouse.available_qty" class="mt-2 pt-2 border-t border-gray-100">
 										<div class="flex items-center justify-between text-xs text-gray-600">
 											<span class="text-start">{{ __('Actual Stock') }}</span>
-											<span class="font-medium text-end">{{ Math.floor(warehouse.actual_qty) }} {{ getVariantUom(warehouse.item_code) }}</span>
+											<span class="font-medium text-end">{{ formatStockQty(warehouse.actual_qty) }} {{ getVariantUom(warehouse.item_code) }}</span>
 										</div>
 									</div>
 								</div>
@@ -399,11 +399,11 @@
 										'text-lg font-bold',
 										warehouse.available_qty > 0 ? 'text-green-600' : 'text-red-500'
 									]">
-										{{ Math.floor(warehouse.available_qty) }} {{ warehouse.item_code ? getVariantUom(warehouse.item_code) : displayUom }}
+										{{ formatStockQty(warehouse.available_qty) }} {{ warehouse.item_code ? getVariantUom(warehouse.item_code) : displayUom }}
 									</div>
 									<div class="text-xs text-gray-500 mt-0.5">
 										<span v-if="warehouse.reserved_qty > 0" class="text-orange-600">
-											{{ __( '{0} reserved', [Math.floor(warehouse.reserved_qty)]) }}
+											{{ __( '{0} reserved', [formatStockQty(warehouse.reserved_qty)]) }}
 										</span>
 										<span v-else>{{ __('Available') }}</span>
 									</div>
@@ -413,7 +413,7 @@
 							<div v-if="warehouse.actual_qty !== warehouse.available_qty" class="mt-2 pt-2 border-t border-gray-200">
 								<div class="flex items-center justify-between text-xs text-gray-600">
 									<span class="text-start">{{ __('Actual Stock') }}</span>
-									<span class="font-medium text-end">{{ Math.floor(warehouse.actual_qty) }} {{ warehouse.item_code ? getVariantUom(warehouse.item_code) : displayUom }}</span>
+									<span class="font-medium text-end">{{ formatStockQty(warehouse.actual_qty) }} {{ warehouse.item_code ? getVariantUom(warehouse.item_code) : displayUom }}</span>
 								</div>
 							</div>
 						</div>
@@ -475,6 +475,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { call, Dialog } from 'frappe-ui'
 import { __ } from '@/utils/translation'
+import { formatStockQty, normalizeStockQty } from '@/composables/useStock'
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -561,7 +562,7 @@ const displayUom = computed(() => {
 
 const totalAvailable = computed(() => {
 	if (!warehouses.value || warehouses.value.length === 0) return 0
-	return Math.floor(warehouses.value.reduce((sum, w) => sum + (w.available_qty || 0), 0))
+	return normalizeStockQty(warehouses.value.reduce((sum, w) => sum + (w.available_qty || 0), 0))
 })
 
 // Group warehouses by warehouse name when multiple variants selected

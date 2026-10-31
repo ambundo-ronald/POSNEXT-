@@ -186,6 +186,7 @@
 </template>
 
 <script setup>
+import { formatStockQty } from "@/composables/useStock"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { Button, Dialog } from "frappe-ui"
 import { createResource } from "frappe-ui"
@@ -252,7 +253,7 @@ const stockWarning = computed(() => {
 	if (availableStock === null) return null
 
 	if (quantity.value > availableStock) {
-		return __("Requested quantity ({0}) exceeds available stock ({1})", [quantity.value, Math.floor(availableStock)])
+		return __("Requested quantity ({0}) exceeds available stock ({1})", [quantity.value, formatStockQty(availableStock)])
 	}
 	return null
 })

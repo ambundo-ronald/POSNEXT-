@@ -759,6 +759,7 @@ import { useToast } from "@/composables/useToast"
 import { useBootstrapStore } from "@/stores/bootstrap"
 import { useItemSearchStore } from "@/stores/itemSearch"
 import { useStockStore } from "@/stores/stock"
+import { normalizeStockQty } from "@/composables/useStock"
 // Pinia Stores
 import { usePOSCartStore } from "@/stores/posCart"
 import { usePOSDraftsStore } from "@/stores/posDrafts"
@@ -1474,7 +1475,7 @@ function handleItemSelected(item, autoAdd = false) {
 	// Skip validation for batch/serial items - they have their own validation in the dialog
 	// Product Bundles have calculated stock based on component availability
 	if (settingsStore.shouldEnforceStockValidation() && (item.is_stock_item || item.is_bundle) && !item.has_serial_no && !item.has_batch_no) {
-		const actualQty = Math.floor(item.actual_qty ?? item.stock_qty ?? 0)
+		const actualQty = normalizeStockQty(item.actual_qty ?? item.stock_qty ?? 0)
 
 		if (actualQty <= 0) {
 			showError(item.is_bundle
