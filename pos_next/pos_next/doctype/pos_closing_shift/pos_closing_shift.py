@@ -392,9 +392,52 @@ def get_pos_invoices(pos_opening_shift, doctype=None):
 
 @frappe.whitelist()
 def get_payments_entries(pos_opening_shift):
+    # Collect candidate Payment Entries with separate indexed lookups. A single
+    # query OR-ing across Payment Entry, its references and the SMS register
+    # cannot use indexes and scans every Payment Entry against every SMS row,
+    # which stalls shift closing once those tables grow.
+    payment_entries = set(
+        frappe.get_all(
+            "Payment Entry",
+            filters={"reference_no": pos_opening_shift},
+            pluck="name",
+        )
+    )
+
+    shift_invoices = frappe.get_all(
+        "Sales Invoice",
+        filters={"posa_pos_opening_shift": pos_opening_shift},
+        pluck="name",
+    )
+    if shift_invoices:
+        payment_entries.update(
+            frappe.get_all(
+                "Payment Entry Reference",
+                filters={
+                    "parenttype": "Payment Entry",
+                    "reference_doctype": "Sales Invoice",
+                    "reference_name": ["in", shift_invoices],
+                },
+                pluck="parent",
+            )
+        )
+        payment_entries.update(
+            frappe.get_all(
+                "SMS Enabler Payment Register",
+                filters={
+                    "sales_invoice": ["in", shift_invoices],
+                    "cash_change_payment_entry": ["is", "set"],
+                },
+                pluck="cash_change_payment_entry",
+            )
+        )
+
+    if not payment_entries:
+        return []
+
     return frappe.db.sql(
         """
-        SELECT DISTINCT
+        SELECT
             pe.name,
             pe.mode_of_payment,
             CASE WHEN pe.payment_type = 'Pay' THEN -pe.paid_amount ELSE pe.paid_amount END AS paid_amount,
@@ -404,24 +447,11 @@ def get_payments_entries(pos_opening_shift):
             pe.posting_date,
             pe.party
         FROM `tabPayment Entry` pe
-        LEFT JOIN `tabPayment Entry Reference` per
-            ON per.parent = pe.name
-            AND per.reference_doctype = 'Sales Invoice'
-        LEFT JOIN `tabSales Invoice` si
-            ON si.name = per.reference_name
-        LEFT JOIN `tabSMS Enabler Payment Register` sms
-            ON sms.cash_change_payment_entry = pe.name
-        LEFT JOIN `tabSales Invoice` sms_si
-            ON sms_si.name = sms.sales_invoice
-        WHERE pe.docstatus = 1
+        WHERE pe.name IN %(payment_entries)s
+            AND pe.docstatus = 1
             AND pe.payment_type IN ('Receive', 'Pay')
-            AND (
-                pe.reference_no = %(pos_opening_shift)s
-                OR si.posa_pos_opening_shift = %(pos_opening_shift)s
-                OR sms_si.posa_pos_opening_shift = %(pos_opening_shift)s
-            )
         """,
-        {"pos_opening_shift": pos_opening_shift},
+        {"payment_entries": tuple(payment_entries)},
         as_dict=True,
     )
 

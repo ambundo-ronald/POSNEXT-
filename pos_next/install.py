@@ -8,6 +8,36 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# Columns used to look up shift invoices and payments when closing a shift.
+PERFORMANCE_INDEXES = [
+	("Sales Invoice", "posa_pos_opening_shift"),
+	("Payment Entry", "reference_no"),
+	("Payment Entry Reference", "reference_name"),
+	("SMS Enabler Payment Register", "sales_invoice"),
+	("SMS Enabler Payment Register", "cash_change_payment_entry"),
+]
+
+
+def ensure_performance_indexes():
+	"""Add missing single-column indexes; never fail the migration over them."""
+	for doctype, column in PERFORMANCE_INDEXES:
+		try:
+			if not frappe.db.has_column(doctype, column):
+				continue
+			existing = frappe.db.sql(
+				f"SHOW INDEX FROM `tab{doctype}` WHERE Column_name = %s AND Seq_in_index = 1",
+				column,
+			)
+			if not existing:
+				frappe.db.add_index(doctype, [column])
+				log_message(f"POS Next: Added index on {doctype}.{column}", level="success")
+		except Exception:
+			frappe.log_error(
+				title="POS Next Index Error",
+				message=f"{doctype}.{column}\n{frappe.get_traceback()}",
+			)
+
+
 def after_install():
 	"""Hook that runs after app installation"""
 	try:
@@ -34,6 +64,7 @@ def after_migrate():
 		setup_default_print_format(quiet=True)
 		frappe.db.commit()
 		log_message("POS Next: Fixtures updated successfully", level="success")
+		ensure_performance_indexes()
 	except Exception as e:
 		frappe.db.rollback()
 		frappe.log_error(
