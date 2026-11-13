@@ -1624,6 +1624,23 @@ def _get_item_group_ratio_join():
 	"""
 
 
+# Sales reports show each invoice as it stood at the end of its posting date:
+# Payment Entries posted on later days do not reduce that day's Unpaid/Credit.
+SALE_DAY_OUTSTANDING_SQL = """
+	(
+		si.outstanding_amount + (
+			SELECT COALESCE(SUM(later_per.allocated_amount), 0)
+			FROM `tabPayment Entry Reference` later_per
+			INNER JOIN `tabPayment Entry` later_pe ON later_pe.name = later_per.parent
+			WHERE later_per.reference_doctype = 'Sales Invoice'
+				AND later_per.reference_name = si.name
+				AND later_pe.docstatus = 1
+				AND later_pe.posting_date > si.posting_date
+		)
+	)
+"""
+
+
 def _get_sales_report_payment_export(
 	pos_profile,
 	from_date,
@@ -1666,7 +1683,7 @@ def _get_sales_report_payment_export(
 			si.posting_date,
 			si.posting_time,
 			si.paid_amount,
-			si.outstanding_amount,
+			{SALE_DAY_OUTSTANDING_SQL} AS outstanding_amount,
 			si.grand_total,
 			si.is_return,
 			(
@@ -1761,6 +1778,7 @@ def _get_sales_report_payment_export(
 			AND (si.is_pos = 1 OR COALESCE(si.posa_client_transaction_id, '') != '')
 			AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
 			AND pe.docstatus = 1
+			AND pe.posting_date <= si.posting_date
 			AND per.allocated_amount != 0
 			{sales_person_filter}
 			{item_group_filter}
@@ -2190,7 +2208,7 @@ def get_sales_report(
 					si.name,
 					si.is_return,
 					si.paid_amount,
-					si.outstanding_amount,
+					{SALE_DAY_OUTSTANDING_SQL} AS outstanding_amount,
 					COALESCE(SUM(sii.amount), 0) AS item_amount,
 					COALESCE(SUM(sii.discount_amount), 0) AS item_discount_amount,
 					CASE
@@ -2203,7 +2221,7 @@ def get_sales_report(
 				WHERE {filters}
 					AND ig.lft >= %(item_group_lft)s
 					AND ig.rgt <= %(item_group_rgt)s
-				GROUP BY si.name, si.is_return, si.paid_amount, si.outstanding_amount, si.net_total
+				GROUP BY si.name, si.is_return, si.paid_amount, si.outstanding_amount, si.posting_date, si.net_total
 			) filtered
 			""",
 			params,
@@ -2220,7 +2238,7 @@ def get_sales_report(
 				COALESCE(SUM(CASE WHEN si.is_return = 1 THEN ABS(si.grand_total) ELSE 0 END), 0) as returns_total,
 				COALESCE(SUM(si.grand_total), 0) as net_sales,
 				COALESCE(SUM(si.paid_amount), 0) as paid_amount,
-				COALESCE(SUM(si.outstanding_amount), 0) as outstanding_amount,
+				COALESCE(SUM({SALE_DAY_OUTSTANDING_SQL}), 0) as outstanding_amount,
 				COALESCE(SUM(si.discount_amount), 0) as discount_amount
 			FROM `tabSales Invoice` si
 			WHERE {filters}
@@ -2307,6 +2325,7 @@ def get_sales_report(
 		{item_group_ratio_join}
 		WHERE {filters}
 			AND pe.docstatus = 1
+			AND pe.posting_date <= si.posting_date
 			AND per.allocated_amount != 0
 		GROUP BY pe.mode_of_payment
 		""",
@@ -2342,7 +2361,7 @@ def get_sales_report(
 			si.posting_time,
 			si.grand_total,
 			si.paid_amount,
-			si.outstanding_amount,
+			{SALE_DAY_OUTSTANDING_SQL} AS outstanding_amount,
 			si.status,
 			si.is_return,
 			(
