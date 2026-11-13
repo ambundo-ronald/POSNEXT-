@@ -7,19 +7,18 @@
 			<div class="flex flex-col gap-4">
 				<!-- Filters -->
 				<div class="flex items-center gap-2">
-					<div class="flex-1">
-						<Input
+					<div class="relative flex-1">
+						<svg class="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+						</svg>
+						<!-- Native input: frappe-ui's legacy Input only updates v-model on change (blur) -->
+						<input
 							v-model="searchTerm"
 							type="text"
 							:placeholder="__('Search by invoice number or customer...')"
-							@input="searchInvoices"
-						>
-							<template #prefix>
-								<svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-								</svg>
-							</template>
-						</Input>
+							class="w-full ps-9 pe-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+							autocomplete="off"
+						/>
 					</div>
 					<Button
 						variant="subtle"
@@ -142,7 +141,7 @@
 import { useToast } from "@/composables/useToast"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
-import { Button, Dialog, Input, createResource } from "frappe-ui"
+import { Button, Dialog, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 
 const { showError } = useToast()
@@ -259,10 +258,6 @@ function loadInvoices(append = false) {
 
 function loadMore() {
 	loadInvoices(true)
-}
-
-function searchInvoices() {
-	// Debounced search - already filtered by computed property
 }
 
 function viewInvoice(invoice) {
