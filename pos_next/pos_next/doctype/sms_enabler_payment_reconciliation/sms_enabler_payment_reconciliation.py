@@ -72,9 +72,20 @@ def _parse_names(value):
 	return names
 
 
+def _get_date_order(sort_order, date_field, default):
+	direction = {"Newest First": "desc", "Oldest First": "asc"}.get(sort_order, default)
+	return f"{date_field} {direction}, name {direction}"
+
+
 @frappe.whitelist()
 def get_outstanding_invoices(
-	company=None, pos_profile=None, customer=None, from_date=None, to_date=None, invoice_name=None
+	company=None,
+	pos_profile=None,
+	customer=None,
+	from_date=None,
+	to_date=None,
+	invoice_name=None,
+	sort_order=None,
 ):
 	_validate_pos_profile_access(pos_profile)
 	filters = {
@@ -110,14 +121,14 @@ def get_outstanding_invoices(
 			"outstanding_amount",
 			"currency",
 		],
-		order_by="posting_date asc, name asc",
+		order_by=_get_date_order(sort_order, "posting_date", default="asc"),
 		limit_page_length=200,
 	)
 
 
 @frappe.whitelist()
 def get_unreconciled_sms_payments(
-	company=None, pos_profile=None, search=None, from_date=None, to_date=None
+	company=None, pos_profile=None, search=None, from_date=None, to_date=None, sort_order=None
 ):
 	_validate_pos_profile_access(pos_profile)
 	from pos_next.pos_next.doctype.pos_settings.pos_settings import get_global_sms_enabler_settings
@@ -166,7 +177,7 @@ def get_unreconciled_sms_payments(
 			"mode_of_payment",
 			"raw_message",
 		],
-		order_by="received_at desc",
+		order_by=_get_date_order(sort_order, "received_at", default="desc"),
 		limit_page_length=200,
 	)
 

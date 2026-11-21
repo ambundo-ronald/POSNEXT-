@@ -21,8 +21,10 @@
   "to_sms_payment_date",
   "sms_search",
   "entries_section",
+  "invoice_sort_order",
   "invoices",
   "column_break_entries",
+  "sms_payment_sort_order",
   "sms_payments"
  ],
  "fields": [
@@ -112,6 +114,13 @@
    "fieldtype": "Section Break"
   },
   {
+   "default": "Oldest First",
+   "fieldname": "invoice_sort_order",
+   "fieldtype": "Select",
+   "label": "Invoice Date ⇅",
+   "options": "Oldest First\nNewest First"
+  },
+  {
    "fieldname": "invoices",
    "fieldtype": "Table",
    "label": "Invoices",
@@ -120,6 +129,13 @@
   {
    "fieldname": "column_break_entries",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "Newest First",
+   "fieldname": "sms_payment_sort_order",
+   "fieldtype": "Select",
+   "label": "Received At ⇅",
+   "options": "Newest First\nOldest First"
   },
   {
    "fieldname": "sms_payments",
@@ -134,7 +150,7 @@
  "is_virtual": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-25 18:00:00.000000",
+ "modified": "2026-11-21 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "SMS Enabler Payment Reconciliation",

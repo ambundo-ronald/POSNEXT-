@@ -54,75 +54,29 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 		frm.clear_table("invoices");
 		frm.clear_table("sms_payments");
 
-		frappe.call({
-			method:
-				"pos_next.pos_next.doctype.sms_enabler_payment_reconciliation.sms_enabler_payment_reconciliation.get_outstanding_invoices",
-			args: {
-				company: frm.doc.company || "",
-				pos_profile: frm.doc.pos_profile || "",
-				customer: frm.doc.customer || "",
-				invoice_name: frm.doc.invoice_name || "",
-				from_date: frm.doc.from_invoice_date || frm.doc.from_posting_date || "",
-				to_date: frm.doc.to_invoice_date || frm.doc.to_posting_date || "",
-			},
-			callback(response) {
-				const invoices = response.message || [];
-				frm.clear_table("invoices");
-				for (const invoice of invoices) {
-					const row = frm.add_child("invoices");
-					row.sales_invoice = invoice.sales_invoice;
-					row.posting_date = invoice.posting_date;
-					row.customer = invoice.customer;
-					row.grand_total = invoice.grand_total;
-					row.outstanding_amount = invoice.outstanding_amount;
-					row.currency = invoice.currency;
-				}
-				frm.refresh_field("invoices");
-				toggle_allocate_button(frm);
-			},
+		Promise.all([load_invoices(frm), load_sms_payments(frm)]).then(() => {
+			if (!frm.doc.invoices.length && !frm.doc.sms_payments.length) {
+				frappe.msgprint({
+					title: __("No Entries Found"),
+					message: __(
+						"No outstanding invoices or unreconciled SMS payments found for the selected filters.",
+					),
+					indicator: "orange",
+				});
+			}
 		});
+	},
 
-		frappe.call({
-			method:
-				"pos_next.pos_next.doctype.sms_enabler_payment_reconciliation.sms_enabler_payment_reconciliation.get_unreconciled_sms_payments",
-			args: {
-				company: frm.doc.company || "",
-				pos_profile: frm.doc.pos_profile || "",
-				search: frm.doc.sms_search || "",
-				from_date: frm.doc.from_sms_payment_date || frm.doc.from_posting_date || "",
-				to_date: frm.doc.to_sms_payment_date || frm.doc.to_posting_date || "",
-			},
-			callback(response) {
-				const payments = response.message || [];
-				frm.clear_table("sms_payments");
-				for (const payment of payments) {
-					const row = frm.add_child("sms_payments");
-					row.sms_payment = payment.sms_payment;
-					row.received_at = payment.received_at;
-					row.payer_name = payment.payer_name || payment.source;
-					row.payer_phone = payment.payer_phone || payment.sender;
-					row.transaction_id = payment.transaction_id;
-					row.amount = payment.amount;
-					row.original_amount = payment.original_amount;
-					row.allocated_amount = payment.allocated_amount;
-					row.allocation_status = payment.allocation_status;
-					row.mode_of_payment = payment.mode_of_payment;
-				}
-				frm.refresh_field("sms_payments");
-				toggle_allocate_button(frm);
-				toggle_non_sales_button(frm);
+	invoice_sort_order(frm) {
+		if (frm.doc.invoices?.length) {
+			load_invoices(frm);
+		}
+	},
 
-				if (!frm.doc.invoices.length && !frm.doc.sms_payments.length) {
-					frappe.msgprint({
-						title: __("No Entries Found"),
-						message: __(
-							"No outstanding invoices or unreconciled SMS payments found for the selected filters.",
-						),
-						indicator: "orange",
-					});
-				}
-			},
-		});
+	sms_payment_sort_order(frm) {
+		if (frm.doc.sms_payments?.length) {
+			load_sms_payments(frm);
+		}
 	},
 
 	process_payments(frm) {
@@ -205,6 +159,72 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 		show_non_sales_reconciliation_dialog(frm, sms_payment_names);
 	},
 });
+
+function load_invoices(frm) {
+	return frappe.call({
+		method:
+			"pos_next.pos_next.doctype.sms_enabler_payment_reconciliation.sms_enabler_payment_reconciliation.get_outstanding_invoices",
+		args: {
+			company: frm.doc.company || "",
+			pos_profile: frm.doc.pos_profile || "",
+			customer: frm.doc.customer || "",
+			invoice_name: frm.doc.invoice_name || "",
+			from_date: frm.doc.from_invoice_date || frm.doc.from_posting_date || "",
+			to_date: frm.doc.to_invoice_date || frm.doc.to_posting_date || "",
+			sort_order: frm.doc.invoice_sort_order || "",
+		},
+		callback(response) {
+			const invoices = response.message || [];
+			frm.clear_table("invoices");
+			for (const invoice of invoices) {
+				const row = frm.add_child("invoices");
+				row.sales_invoice = invoice.sales_invoice;
+				row.posting_date = invoice.posting_date;
+				row.customer = invoice.customer;
+				row.grand_total = invoice.grand_total;
+				row.outstanding_amount = invoice.outstanding_amount;
+				row.currency = invoice.currency;
+			}
+			frm.refresh_field("invoices");
+			toggle_allocate_button(frm);
+		},
+	});
+}
+
+function load_sms_payments(frm) {
+	return frappe.call({
+		method:
+			"pos_next.pos_next.doctype.sms_enabler_payment_reconciliation.sms_enabler_payment_reconciliation.get_unreconciled_sms_payments",
+		args: {
+			company: frm.doc.company || "",
+			pos_profile: frm.doc.pos_profile || "",
+			search: frm.doc.sms_search || "",
+			from_date: frm.doc.from_sms_payment_date || frm.doc.from_posting_date || "",
+			to_date: frm.doc.to_sms_payment_date || frm.doc.to_posting_date || "",
+			sort_order: frm.doc.sms_payment_sort_order || "",
+		},
+		callback(response) {
+			const payments = response.message || [];
+			frm.clear_table("sms_payments");
+			for (const payment of payments) {
+				const row = frm.add_child("sms_payments");
+				row.sms_payment = payment.sms_payment;
+				row.received_at = payment.received_at;
+				row.payer_name = payment.payer_name || payment.source;
+				row.payer_phone = payment.payer_phone || payment.sender;
+				row.transaction_id = payment.transaction_id;
+				row.amount = payment.amount;
+				row.original_amount = payment.original_amount;
+				row.allocated_amount = payment.allocated_amount;
+				row.allocation_status = payment.allocation_status;
+				row.mode_of_payment = payment.mode_of_payment;
+			}
+			frm.refresh_field("sms_payments");
+			toggle_allocate_button(frm);
+			toggle_non_sales_button(frm);
+		},
+	});
+}
 
 function toggle_allocate_button(frm) {
 	frm.remove_custom_button(__("Allocate"));
