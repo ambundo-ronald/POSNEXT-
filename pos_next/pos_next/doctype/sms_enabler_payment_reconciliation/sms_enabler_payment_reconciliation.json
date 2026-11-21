@@ -23,9 +23,11 @@
   "entries_section",
   "invoice_sort_order",
   "invoices",
+  "invoice_selection_summary",
   "column_break_entries",
   "sms_payment_sort_order",
-  "sms_payments"
+  "sms_payments",
+  "sms_payment_selection_summary"
  ],
  "fields": [
   {
@@ -127,6 +129,10 @@
    "options": "SMS Enabler Reconciliation Invoice"
   },
   {
+   "fieldname": "invoice_selection_summary",
+   "fieldtype": "HTML"
+  },
+  {
    "fieldname": "column_break_entries",
    "fieldtype": "Column Break"
   },
@@ -142,6 +148,10 @@
    "fieldtype": "Table",
    "label": "SMS Payments",
    "options": "SMS Enabler Reconciliation Payment"
+  },
+  {
+   "fieldname": "sms_payment_selection_summary",
+   "fieldtype": "HTML"
   }
  ],
  "hide_toolbar": 1,
@@ -150,7 +160,7 @@
  "is_virtual": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-21 12:00:00.000000",
+ "modified": "2026-11-21 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "SMS Enabler Payment Reconciliation",

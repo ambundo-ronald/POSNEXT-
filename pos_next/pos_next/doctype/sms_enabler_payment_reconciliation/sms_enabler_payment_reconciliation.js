@@ -21,6 +21,8 @@ frappe.ui.form.on("SMS Enabler Payment Reconciliation", {
 		frm.set_df_property("sms_payments", "cannot_add_rows", true);
 		frm.set_df_property("sms_payments", "cannot_delete_rows", true);
 		set_allocation_status_formatter(frm);
+		use_full_width(frm);
+		setup_selection_summaries(frm);
 
 		frm.add_custom_button(__("Get Unreconciled Entries"), () => {
 			frm.trigger("fetch_entries");
@@ -186,6 +188,7 @@ function load_invoices(frm) {
 				row.currency = invoice.currency;
 			}
 			frm.refresh_field("invoices");
+			update_selection_summary(frm, "invoices");
 			toggle_allocate_button(frm);
 		},
 	});
@@ -220,10 +223,69 @@ function load_sms_payments(frm) {
 				row.mode_of_payment = payment.mode_of_payment;
 			}
 			frm.refresh_field("sms_payments");
+			update_selection_summary(frm, "sms_payments");
 			toggle_allocate_button(frm);
 			toggle_non_sales_button(frm);
 		},
 	});
+}
+
+// Widen this page only: the default fixed-width container squeezes both tables.
+function use_full_width(frm) {
+	frm.page.wrapper.find(".page-head .container, .page-body.container").css({
+		width: "100%",
+		maxWidth: "100%",
+	});
+}
+
+const SELECTION_SUMMARIES = {
+	invoices: {
+		field: "invoice_selection_summary",
+		amount_field: "outstanding_amount",
+		label: __("Selected invoices"),
+		amount_label: __("Outstanding"),
+	},
+	sms_payments: {
+		field: "sms_payment_selection_summary",
+		amount_field: "amount",
+		label: __("Selected SMS payments"),
+		amount_label: __("Available"),
+	},
+};
+
+function setup_selection_summaries(frm) {
+	for (const table of Object.keys(SELECTION_SUMMARIES)) {
+		const grid = frm.fields_dict[table]?.grid;
+		if (!grid) {
+			continue;
+		}
+		// Delegated so it survives grid re-renders; deferred so the grid's own
+		// select-all handler has updated the row checkboxes first.
+		grid.wrapper.off("change.selection_summary").on("change.selection_summary", ".grid-row-check", () => {
+			setTimeout(() => update_selection_summary(frm, table), 0);
+		});
+		update_selection_summary(frm, table);
+	}
+}
+
+function update_selection_summary(frm, table) {
+	const config = SELECTION_SUMMARIES[table];
+	const grid = frm.fields_dict[table]?.grid;
+	const summary = frm.fields_dict[config.field];
+	if (!grid || !summary) {
+		return;
+	}
+
+	const rows = grid.get_selected_children() || [];
+	const total = rows.reduce((sum, row) => sum + flt(row[config.amount_field]), 0);
+	const currency = rows[0]?.currency || frm.doc.invoices?.[0]?.currency || frappe.defaults.get_default("currency");
+
+	summary.$wrapper.html(`
+		<div class="d-flex justify-content-between align-items-center px-3 py-2 mt-2 rounded border">
+			<span class="text-muted">${config.label}: <b>${rows.length}</b></span>
+			<span>${config.amount_label}: <b>${format_currency(total, currency)}</b></span>
+		</div>
+	`);
 }
 
 function toggle_allocate_button(frm) {
