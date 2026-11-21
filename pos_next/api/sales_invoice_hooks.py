@@ -21,6 +21,28 @@ def validate(doc, method=None):
 	"""
 	apply_tax_inclusive(doc)
 	normalize_pos_payments(doc)
+	keep_client_transaction_id_unique(doc)
+
+
+def keep_client_transaction_id_unique(doc):
+	"""
+	Give an amended invoice its own POS client transaction ID.
+
+	Frappe's Amend copies no_copy fields, so the amendment inherits the
+	cancelled invoice's unique ID and fails to save. Keep the original ID as
+	the prefix so the invoice still counts as a POS Next invoice in reports.
+	"""
+	transaction_id = doc.get("posa_client_transaction_id")
+	if not transaction_id or not doc.get("amended_from"):
+		return
+
+	taken = frappe.db.exists(
+		"Sales Invoice",
+		{"posa_client_transaction_id": transaction_id, "name": ["!=", doc.name]},
+	)
+	if taken:
+		base_id = transaction_id.split("|", 1)[0]
+		doc.posa_client_transaction_id = f"{base_id}|{doc.name}"[:140]
 
 
 def before_submit(doc, method=None):
