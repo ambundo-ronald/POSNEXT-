@@ -22,10 +22,12 @@
   "sms_search",
   "entries_section",
   "invoice_sort_order",
+  "invoice_amount_order",
   "invoices",
   "invoice_selection_summary",
   "column_break_entries",
   "sms_payment_sort_order",
+  "sms_payment_amount_order",
   "sms_payments",
   "sms_payment_selection_summary"
  ],
@@ -123,6 +125,12 @@
    "options": "Oldest First\nNewest First"
   },
   {
+   "fieldname": "invoice_amount_order",
+   "fieldtype": "Select",
+   "label": "Outstanding Amount ⇅",
+   "options": "\nLowest First\nHighest First"
+  },
+  {
    "fieldname": "invoices",
    "fieldtype": "Table",
    "label": "Invoices",
@@ -144,6 +152,12 @@
    "options": "Newest First\nOldest First"
   },
   {
+   "fieldname": "sms_payment_amount_order",
+   "fieldtype": "Select",
+   "label": "Available Amount ⇅",
+   "options": "\nLowest First\nHighest First"
+  },
+  {
    "fieldname": "sms_payments",
    "fieldtype": "Table",
    "label": "SMS Payments",
@@ -160,7 +174,7 @@
  "is_virtual": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-21 13:00:00.000000",
+ "modified": "2026-11-21 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "SMS Enabler Payment Reconciliation",

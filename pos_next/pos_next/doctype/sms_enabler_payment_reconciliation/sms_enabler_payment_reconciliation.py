@@ -72,9 +72,16 @@ def _parse_names(value):
 	return names
 
 
-def _get_date_order(sort_order, date_field, default):
+AMOUNT_ORDER = {"Lowest First": "asc", "Highest First": "desc"}
+
+
+def _get_date_order(sort_order, date_field, default, amount_order=None, amount_field=None):
 	direction = {"Newest First": "desc", "Oldest First": "asc"}.get(sort_order, default)
-	return f"{date_field} {direction}, name {direction}"
+	order = f"{date_field} {direction}, name {direction}"
+	# Amount sorts first; the chosen date order breaks ties.
+	if amount_field and amount_order in AMOUNT_ORDER:
+		order = f"{amount_field} {AMOUNT_ORDER[amount_order]}, {order}"
+	return order
 
 
 @frappe.whitelist()
@@ -86,6 +93,7 @@ def get_outstanding_invoices(
 	to_date=None,
 	invoice_name=None,
 	sort_order=None,
+	amount_order=None,
 ):
 	_validate_pos_profile_access(pos_profile)
 	filters = {
@@ -121,14 +129,22 @@ def get_outstanding_invoices(
 			"outstanding_amount",
 			"currency",
 		],
-		order_by=_get_date_order(sort_order, "posting_date", default="asc"),
+		order_by=_get_date_order(
+			sort_order, "posting_date", default="asc", amount_order=amount_order, amount_field="outstanding_amount"
+		),
 		limit_page_length=200,
 	)
 
 
 @frappe.whitelist()
 def get_unreconciled_sms_payments(
-	company=None, pos_profile=None, search=None, from_date=None, to_date=None, sort_order=None
+	company=None,
+	pos_profile=None,
+	search=None,
+	from_date=None,
+	to_date=None,
+	sort_order=None,
+	amount_order=None,
 ):
 	_validate_pos_profile_access(pos_profile)
 	from pos_next.pos_next.doctype.pos_settings.pos_settings import get_global_sms_enabler_settings
@@ -177,7 +193,9 @@ def get_unreconciled_sms_payments(
 			"mode_of_payment",
 			"raw_message",
 		],
-		order_by=_get_date_order(sort_order, "received_at", default="desc"),
+		order_by=_get_date_order(
+			sort_order, "received_at", default="desc", amount_order=amount_order, amount_field="available_amount"
+		),
 		limit_page_length=200,
 	)
 
@@ -197,6 +215,10 @@ def get_unreconciled_sms_payments(
 		)
 		available_payments.append(payment)
 	payments = available_payments
+	if amount_order in AMOUNT_ORDER:
+		# The stored available_amount can lag; re-sort on the recomputed value.
+		# sort() is stable, so the date order still breaks ties.
+		payments.sort(key=lambda row: row["available_amount"], reverse=amount_order == "Highest First")
 
 	search = (search or "").strip().lower()
 	if not search:
