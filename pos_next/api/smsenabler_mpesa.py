@@ -362,6 +362,68 @@ def _get_sms_payment_amounts(payment):
 	return total, allocated, available
 
 
+def release_sms_payments_for_cancelled_entry(doc, method=None):
+	"""
+	Payment Entry on_cancel: give the amount back to the SMS payment it came from.
+
+	Cancelling a wrongly matched Payment Entry restores the invoice's
+	outstanding amount, but the SMS payment stayed Consumed and could not be
+	matched again. Release the amount it allocated so it returns to Pending or
+	Partially Allocated and shows up in reconciliation.
+	"""
+	if doc.payment_type != "Receive":
+		return
+
+	released = sum(
+		flt(row.allocated_amount)
+		for row in doc.get("references") or []
+		if row.reference_doctype == "Sales Invoice"
+	)
+
+	or_filters = [["payment_entry", "=", doc.name]]
+	if doc.reference_no:
+		or_filters += [["transaction_id", "=", doc.reference_no], ["name", "=", doc.reference_no]]
+	registers = frappe.get_all(
+		SMS_REGISTER_DOCTYPE,
+		filters={"status": ["in", ["Partially Allocated", "Consumed"]]},
+		or_filters=or_filters,
+		pluck="name",
+	)
+	if not registers:
+		return
+	if len(registers) > 1:
+		frappe.log_error(
+			title="SMS payment not released",
+			message=_("Payment Entry {0} matches several SMS payments: {1}. Adjust them manually.").format(
+				doc.name, ", ".join(registers)
+			),
+		)
+		return
+
+	payment = frappe.get_doc(SMS_REGISTER_DOCTYPE, registers[0])
+	to_release = min(released, flt(payment.allocated_amount))
+	if to_release <= 0.01 and payment.payment_entry != doc.name:
+		return
+	payment.allocated_amount = flt(payment.allocated_amount) - to_release
+	if payment.payment_entry == doc.name:
+		payment.payment_entry = None
+	if payment.allocated_amount <= 0.01:
+		payment.allocated_amount = 0
+		payment.sales_invoice = None
+		payment.customer = None
+		payment.status = "Pending"
+	else:
+		payment.status = "Partially Allocated"
+	payment.flags.ignore_permissions = True
+	payment.save()
+	payment.add_comment(
+		"Info",
+		_("Released {0} after Payment Entry {1} was cancelled.").format(
+			frappe.format_value(to_release, {"fieldtype": "Currency"}), doc.name
+		),
+	)
+
+
 def _get_payment_entry_unallocated(payment_entry):
 	"""Unallocated balance on a submitted Payment Entry (0 if missing/not submitted)."""
 	if not payment_entry:

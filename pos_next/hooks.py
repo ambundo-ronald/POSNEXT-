@@ -231,6 +231,9 @@ doc_events = {
 	},
 	"POS Profile": {
 		"on_update": "pos_next.realtime_events.emit_pos_profile_updated_event"
+	},
+	"Payment Entry": {
+		"on_cancel": "pos_next.api.smsenabler_mpesa.release_sms_payments_for_cancelled_entry"
 	}
 }
 
