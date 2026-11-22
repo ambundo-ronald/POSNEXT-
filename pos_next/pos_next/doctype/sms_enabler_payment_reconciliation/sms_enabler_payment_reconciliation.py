@@ -257,7 +257,9 @@ def process_sms_enabler_reconciliation(invoice_names, sms_payment_names):
 
 	invoices = [frappe.get_doc("Sales Invoice", name) for name in invoice_names]
 	first_invoice = invoices[0]
-	_validate_pos_profile_access(first_invoice.pos_profile)
+	# Desk invoices have no POS Profile; compare against the first one that does
+	pos_profile = next((inv.pos_profile for inv in invoices if inv.pos_profile), None)
+	_validate_pos_profile_access(pos_profile)
 	customer = first_invoice.customer
 	company = first_invoice.company
 	currency = first_invoice.currency
@@ -270,7 +272,7 @@ def process_sms_enabler_reconciliation(invoice_names, sms_payment_names):
 			frappe.throw(_("All selected invoices must belong to the same customer."))
 		if invoice.company != company:
 			frappe.throw(_("All selected invoices must belong to the same company."))
-		if invoice.pos_profile != first_invoice.pos_profile:
+		if invoice.pos_profile and pos_profile and invoice.pos_profile != pos_profile:
 			frappe.throw(_("All selected invoices must belong to the same POS Profile."))
 		if invoice.currency != currency:
 			frappe.throw(_("All selected invoices must use the same currency."))
@@ -288,7 +290,7 @@ def process_sms_enabler_reconciliation(invoice_names, sms_payment_names):
 	for sms_payment in sms_payments:
 		if sms_payment.status not in ("Pending", "Matched", "Partially Allocated"):
 			frappe.throw(_("SMS payment {0} is already {1}.").format(sms_payment.name, sms_payment.status))
-		if sms_payment.pos_profile and sms_payment.pos_profile != first_invoice.pos_profile:
+		if sms_payment.pos_profile and pos_profile and sms_payment.pos_profile != pos_profile:
 			frappe.throw(
 				_("SMS payment {0} belongs to POS Profile {1}.").format(
 					sms_payment.name, sms_payment.pos_profile

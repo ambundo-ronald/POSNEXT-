@@ -1204,7 +1204,7 @@ def reconcile_invoice_with_sms_payments(invoice=None, sms_payments=None):
 			frappe.throw(_("SMS payment {0} is already {1}").format(name, payment.status))
 		if payment.company and payment.company != invoice_doc.company:
 			frappe.throw(_("SMS payment {0} belongs to company {1}").format(name, payment.company))
-		if payment.pos_profile and payment.pos_profile != invoice_doc.pos_profile:
+		if payment.pos_profile and invoice_doc.pos_profile and payment.pos_profile != invoice_doc.pos_profile:
 			frappe.throw(
 				_("SMS payment {0} belongs to POS Profile {1}").format(name, payment.pos_profile)
 			)
@@ -1277,7 +1277,7 @@ def process_sales_invoice_payments(invoice=None, customer=None, company=None, sm
 		payment = frappe.get_doc(SMS_REGISTER_DOCTYPE, name)
 		if payment.status not in ("Pending", "Matched", "Partially Allocated"):
 			frappe.throw(_("SMS payment {0} is already {1}").format(name, payment.status))
-		if payment.pos_profile and payment.pos_profile != invoice_doc.pos_profile:
+		if payment.pos_profile and invoice_doc.pos_profile and payment.pos_profile != invoice_doc.pos_profile:
 			frappe.throw(
 				_("SMS payment {0} belongs to POS Profile {1}").format(name, payment.pos_profile)
 			)
