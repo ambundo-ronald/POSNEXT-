@@ -80,6 +80,9 @@ class POSClosingShift(Document):
         opening_entry.pos_closing_shift = self.name
         opening_entry.set_status()
         self.delete_draft_invoices()
+        # Cashiers close their own shift but usually lack write access on
+        # POS Opening Shift; linking the closing entry is a system update.
+        opening_entry.flags.ignore_permissions = True
         opening_entry.save()
         # link invoices with this closing shift so ERPNext can block edits
         self._set_closing_entry_invoices()
@@ -90,6 +93,7 @@ class POSClosingShift(Document):
             if opening_entry.pos_closing_shift == self.name:
                 opening_entry.pos_closing_shift = ""
                 opening_entry.set_status()
+                opening_entry.flags.ignore_permissions = True
                 opening_entry.save()
         # remove links from invoices so they can be cancelled
         self._clear_closing_entry_invoices()
@@ -185,7 +189,7 @@ class POSClosingShift(Document):
             )
 
             for invoice in data:
-                frappe.delete_doc(doctype, invoice.name, force=1)
+                frappe.delete_doc(doctype, invoice.name, force=1, ignore_permissions=True)
 
     @frappe.whitelist()
     def get_payment_reconciliation_details(self):
