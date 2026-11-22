@@ -9,6 +9,35 @@ from frappe import _
 from frappe.utils import nowdate, nowtime, get_datetime
 
 
+def _is_cash_mode(mode_of_payment, pos_profile=None):
+	"""The drawer-cash method: the POS Profile's cash mode, else the one named Cash."""
+	if not mode_of_payment:
+		return False
+	cash_mode = (
+		frappe.get_cached_value("POS Profile", pos_profile, "posa_cash_mode_of_payment")
+		if pos_profile
+		else None
+	)
+	if cash_mode:
+		return mode_of_payment == cash_mode
+	return mode_of_payment.strip().lower() == "cash"
+
+
+def _require_cash_amounts(rows, amount_field, stage, pos_profile=None):
+	"""Throw unless the drawer-cash row has an amount typed in (0 is allowed)."""
+	for row in rows or []:
+		if not _is_cash_mode(row.get("mode_of_payment"), pos_profile):
+			continue
+		value = row.get(amount_field)
+		if value is None or str(value).strip() == "":
+			frappe.throw(
+				_("Enter the {0} cash amount for {1} before continuing.").format(
+					stage, row.get("mode_of_payment")
+				),
+				title=_("Cash Amount Required"),
+			)
+
+
 @frappe.whitelist()
 def get_opening_dialog_data():
 	"""Get data required for opening shift dialog"""
@@ -52,6 +81,7 @@ def get_opening_dialog_data():
 		# Set currency from pos profile
 		for mode in data["payments_method"]:
 			mode["currency"] = frappe.get_cached_value("POS Profile", mode["parent"], "currency")
+			mode["is_cash"] = _is_cash_mode(mode.get("mode_of_payment"), mode.get("parent"))
 	else:
 		data["payments_method"] = []
 
@@ -93,6 +123,9 @@ def check_opening_shift(user=None):
 def create_opening_shift(pos_profile, company, balance_details):
 	"""Create a new POS Opening Shift"""
 	balance_details = json.loads(balance_details) if isinstance(balance_details, str) else balance_details
+
+	# Cashiers must declare the cash float they start with
+	_require_cash_amounts(balance_details, "opening_amount", _("opening"), pos_profile)
 
 	# Check if user already has an open shift
 	existing_shift = check_opening_shift(frappe.session.user)
@@ -151,6 +184,8 @@ def get_closing_shift_data(opening_shift):
 		# Convert the result to a serializable dict using frappe's as_dict which handles datetime
 		if hasattr(closing_data, 'as_dict'):
 			result = closing_data.as_dict()
+			for payment in result.get("payment_reconciliation") or []:
+				payment["is_cash"] = _is_cash_mode(payment.get("mode_of_payment"), result.get("pos_profile"))
 			# Ensure all values are JSON serializable by converting to JSON and back
 			return json.loads(json.dumps(result, default=str))
 		return closing_data
@@ -164,12 +199,21 @@ def submit_closing_shift(closing_shift):
 	"""Submit closing shift"""
 	from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import submit_closing_shift as submit_shift
 
-	try:
-		# closing_shift is already a JSON string from frontend
-		# If it's a dict, convert to JSON string
-		if isinstance(closing_shift, dict):
-			closing_shift = json.dumps(closing_shift)
+	# closing_shift is already a JSON string from frontend
+	# If it's a dict, convert to JSON string
+	if isinstance(closing_shift, dict):
+		closing_shift = json.dumps(closing_shift)
 
+	# Cashiers must count and enter the cash in the drawer
+	closing_values = json.loads(closing_shift)
+	_require_cash_amounts(
+		closing_values.get("payment_reconciliation") or [],
+		"closing_amount",
+		_("closing"),
+		closing_values.get("pos_profile"),
+	)
+
+	try:
 		result = submit_shift(closing_shift)
 		return {"name": result, "status": "success"}
 	except Exception as e:

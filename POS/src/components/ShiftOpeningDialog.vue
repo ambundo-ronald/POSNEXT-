@@ -58,8 +58,11 @@
 
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-3 text-start">
-              {{ __('Opening Balance (Optional)') }}
+              {{ __('Opening Balance') }}
             </label>
+            <p v-if="cashMethods.length" class="text-xs text-gray-500 mb-3 text-start">
+              {{ __('Count the cash in the drawer and enter it. Enter 0 if the drawer is empty.') }}
+            </p>
 
             <div v-if="dialogDataResource.loading" class="text-center py-4">
               <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
@@ -74,15 +77,21 @@
                 <div class="flex-1">
                   <label class="text-sm font-medium text-gray-700 text-start">
                     {{ method.mode_of_payment }}
+                    <span v-if="method.is_cash" class="text-red-600">*</span>
                   </label>
                 </div>
                 <div class="w-32">
-                  <Input
+                  <!-- Native input so v-model updates while typing -->
+                  <input
                     v-model="openingBalances[method.mode_of_payment]"
                     type="number"
-                    placeholder="0.00"
+                    :placeholder="method.is_cash ? __('Required') : '0.00'"
                     step="0.01"
                     min="0"
+                    :class="[
+                      'w-full px-2 py-1.5 text-sm bg-white border rounded focus:outline-none focus:ring-2 focus:ring-blue-500',
+                      method.is_cash && !hasAmount(method.mode_of_payment) ? 'border-red-300' : 'border-gray-300'
+                    ]"
                   />
                 </div>
               </div>
@@ -96,6 +105,10 @@
           <div v-if="dialogDataResource.error" class="rounded-md bg-red-50 p-4">
             <p class="text-sm text-red-800">{{ dialogDataResource.error }}</p>
           </div>
+
+          <p v-if="missingCash" class="text-xs text-yellow-700 text-start">
+            {{ __('Enter the opening cash amount to open the shift') }}
+          </p>
 
           <div v-if="createShiftResource.error" class="rounded-md bg-red-50 p-4">
             <p class="text-sm text-red-800">{{ createShiftResource.error }}</p>
@@ -173,6 +186,7 @@
             theme="blue"
             @click="openShift"
             :loading="createShiftResource.loading"
+            :disabled="missingCash"
           >
             {{ __('Open Shift') }}
           </Button>
@@ -190,7 +204,7 @@
 </template>
 
 <script setup>
-import { Button, Dialog, Input } from "frappe-ui"
+import { Button, Dialog } from "frappe-ui"
 import { createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import { useShift } from "../composables/useShift"
@@ -244,6 +258,18 @@ const paymentMethods = computed(() => {
 		(method) => method.parent === selectedProfile.value.name,
 	)
 })
+
+const cashMethods = computed(() => paymentMethods.value.filter((method) => method.is_cash))
+
+function hasAmount(modeOfPayment) {
+	const value = openingBalances.value[modeOfPayment]
+	return value !== undefined && value !== null && String(value).trim() !== ""
+}
+
+// Opening is blocked until every cash method has an amount typed in (0 is allowed)
+const missingCash = computed(() =>
+	cashMethods.value.some((method) => !hasAmount(method.mode_of_payment)),
+)
 
 // Watch dialog open state
 // Use { immediate: true } to ensure initDialog runs even when
@@ -312,14 +338,16 @@ async function nextStep() {
 }
 
 async function openShift() {
-	if (!selectedProfile.value) return
+	if (!selectedProfile.value || missingCash.value) return
 
-	// Prepare balance details
+	// Prepare balance details; blank cash is sent as null so the server rejects it
 	const balance_details = paymentMethods.value.map((method) => ({
 		mode_of_payment: method.mode_of_payment,
-		opening_amount: Number.parseFloat(
-			openingBalances.value[method.mode_of_payment] || 0,
-		),
+		opening_amount: hasAmount(method.mode_of_payment)
+			? Number.parseFloat(openingBalances.value[method.mode_of_payment]) || 0
+			: method.is_cash
+				? null
+				: 0,
 	}))
 
 	try {

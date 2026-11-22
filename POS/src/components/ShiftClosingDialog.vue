@@ -217,22 +217,24 @@
                       </div>
                       <label :for="`payment-${idx}`" class="text-start text-sm md:text-base font-semibold text-gray-900 cursor-pointer">
                         {{ payment.mode_of_payment }}
+                        <span v-if="payment.is_cash" class="text-red-600">*</span>
                       </label>
                     </div>
 
                     <!-- Simple Input with Native Arrows -->
                     <div class="w-40 md:w-48">
-                      <Input
+                      <!-- Native input so the amount registers while typing -->
+                      <input
                         :id="`payment-${idx}`"
-                        :modelValue="payment.closing_amount"
-                        @update:modelValue="(value) => updateClosingAmount(payment, value)"
+                        :value="payment.closing_amount"
+                        @input="(event) => updateClosingAmount(payment, event.target.value)"
                         type="number"
                         step="10"
                         min="0"
-                        placeholder="0.00"
+                        :placeholder="payment.is_cash ? __('Count cash') : '0.00'"
                         :disabled="submitResource.loading"
                         :aria-label="__('Enter actual amount for {0}', [payment.mode_of_payment])"
-                        class="text-base md:text-lg text-center font-semibold"
+                        :class="[closingInputClass(payment), 'text-base md:text-lg text-center font-semibold']"
                       />
                     </div>
                   </div>
@@ -311,16 +313,17 @@
                       <label class="block text-xs font-medium text-gray-700 uppercase mb-0.5 md:mb-1">
                         {{ __('Actual Amount *') }}
                       </label>
-                      <Input
-                        :modelValue="payment.closing_amount"
-                        @update:modelValue="(value) => updateClosingAmount(payment, value)"
+                      <!-- Native input so the amount registers while typing -->
+                      <input
+                        :value="payment.closing_amount"
+                        @input="(event) => updateClosingAmount(payment, event.target.value)"
                         type="number"
                         step="0.01"
                         min="0"
-                        placeholder="0.00"
+                        :placeholder="payment.is_cash ? __('Count cash') : '0.00'"
                         :disabled="showSuccessReport || submitResource.loading"
                         :aria-label="`Enter actual amount for ${payment.mode_of_payment}`"
-                        class="text-base md:text-lg"
+                        :class="[closingInputClass(payment), 'text-base md:text-lg']"
                       />
                       <div class="text-xs text-gray-500 mt-0.5 md:mt-1 hidden sm:block">
                         {{ showSuccessReport ? __('Final Amount') : __('Count & enter') }}
@@ -456,7 +459,7 @@
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 order-1 sm:order-2">
           <!-- Validation Warning (only in entry mode) -->
           <div v-if="!canSubmit && closingData && !showSuccessReport" class="text-xs md:text-sm text-yellow-600 font-medium text-center sm:text-end">
-            {{ __('Please enter all closing amounts') }}
+            {{ __('Count the cash and enter the closing cash amount') }}
           </div>
 
           <!-- Success message (shown in report view) -->
@@ -482,7 +485,7 @@
 </template>
 
 <script setup>
-import { Button, Dialog, Input } from "frappe-ui"
+import { Button, Dialog } from "frappe-ui"
 import { computed, reactive, ref, watch } from "vue"
 import { storeToRefs } from "pinia"
 import { useShift } from "../composables/useShift"
@@ -543,8 +546,10 @@ async function loadClosingData() {
 			data.payment_reconciliation = data.payment_reconciliation.map((payment) =>
 				reactive({
 					...payment,
-					closing_amount:
-						payment.closing_amount ?? payment.expected_amount ?? 0,
+					// Cash starts blank so the cashier must count and type it
+					closing_amount: payment.is_cash
+						? null
+						: (payment.closing_amount ?? payment.expected_amount ?? 0),
 					difference: 0,
 				}),
 			)
@@ -575,8 +580,23 @@ function calculateDifference(payment) {
 
 // New function to handle closing amount updates with proper reactivity
 function updateClosingAmount(payment, value) {
-	payment.closing_amount = value
+	payment.closing_amount = value === "" ? null : value
 	calculateDifference(payment)
+}
+
+function hasClosingAmount(payment) {
+	return (
+		payment.closing_amount !== null &&
+		payment.closing_amount !== undefined &&
+		String(payment.closing_amount).trim() !== ""
+	)
+}
+
+function closingInputClass(payment) {
+	return [
+		"w-full px-3 py-2 bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100",
+		payment.is_cash && !hasClosingAmount(payment) ? "border-red-300" : "border-gray-300",
+	]
 }
 
 const canSubmit = computed(() => {
@@ -584,12 +604,7 @@ const canSubmit = computed(() => {
 		return false
 
 	// Check if all closing amounts are filled
-	return closingData.value.payment_reconciliation.every(
-		(payment) =>
-			payment.closing_amount !== null &&
-			payment.closing_amount !== undefined &&
-			payment.closing_amount !== "",
-	)
+	return closingData.value.payment_reconciliation.every(hasClosingAmount)
 })
 
 async function submitClosing() {
