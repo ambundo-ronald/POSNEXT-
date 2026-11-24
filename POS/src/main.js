@@ -25,6 +25,7 @@ import {
 import { logger } from "./utils/logger"
 import { offlineWorker } from "./utils/offline/workerClient"
 import translationPlugin from "./utils/translation"
+import { installDialogPointerFix } from "./utils/dialogPointerFix"
 
 import {
 	Alert,
@@ -105,6 +106,9 @@ async function syncCSRFTokenToWorker() {
 // =============================================================================
 // Application Initialization
 // =============================================================================
+
+// Let inputs inside dialogs take focus (reka-ui overlay cancels presses)
+installDialogPointerFix()
 
 async function initializeApp() {
 	const app = createApp(App)
