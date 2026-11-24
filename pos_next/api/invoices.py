@@ -1074,6 +1074,52 @@ def update_invoice(data):
         raise
 
 
+def _validate_opening_shift_is_open(invoice):
+    """
+    Reject a sale tagged to a POS Opening Shift that is no longer open.
+
+    A till left on an old shift (e.g. overnight after auto-close) would
+    otherwise keep booking sales on it, and those sales then appear in no
+    shift's closing totals. Offline sales made while the shift was still open
+    are allowed: the sync sends when the sale was made (epoch milliseconds).
+    """
+    from datetime import datetime, timezone
+
+    from frappe.utils import convert_utc_to_system_timezone, get_datetime
+
+    offline_created_at = invoice.pop("posa_offline_created_at", None)
+    opening_shift = invoice.get("posa_pos_opening_shift")
+    if not opening_shift:
+        return
+
+    shift = frappe.db.get_value(
+        "POS Opening Shift",
+        opening_shift,
+        ["docstatus", "status", "pos_closing_shift"],
+        as_dict=True,
+    )
+    if not shift or (shift.docstatus == 1 and shift.status == "Open"):
+        return
+
+    if offline_created_at and shift.pos_closing_shift:
+        closed_at = frappe.db.get_value("POS Closing Shift", shift.pos_closing_shift, "creation")
+        try:
+            made_at = convert_utc_to_system_timezone(
+                datetime.fromtimestamp(flt(offline_created_at) / 1000, tz=timezone.utc).replace(tzinfo=None)
+            ).replace(tzinfo=None)
+        except Exception:
+            made_at = None
+        if closed_at and made_at and made_at <= get_datetime(closed_at):
+            return
+
+    frappe.throw(
+        _(
+            "Shift {0} is already closed. Reload the POS and open a new shift before making sales."
+        ).format(opening_shift),
+        title=_("Shift Closed"),
+    )
+
+
 @frappe.whitelist()
 def submit_invoice(invoice=None, data=None):
     """Submit the invoice (Step 2)."""
@@ -1129,6 +1175,9 @@ def submit_invoice(invoice=None, data=None):
                 if existing_transaction_invoice.docstatus == 1:
                     return _invoice_submission_response(existing_transaction_invoice)
                 invoice["name"] = existing_transaction_invoice.name
+
+        # Never book a sale on a shift that has already been closed
+        _validate_opening_shift_is_open(invoice)
 
         from pos_next.api.smsenabler_mpesa import validate_sms_pending_checkout
 

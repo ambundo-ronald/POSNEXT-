@@ -116,6 +116,8 @@ export const syncOfflineInvoices = async () => {
 			// Transform items: map 'quantity' to 'qty' for ERPNext compatibility
 			// Offline storage uses 'quantity' (cart format) but server expects 'qty'
 			const invoiceData = { ...invoice.data }
+			// When the sale was made, so the server accepts it even if the shift has since closed
+			invoiceData.posa_offline_created_at = invoice.timestamp
 			const offlinePayments = Array.isArray(invoiceData.payments)
 				? invoiceData.payments
 					.filter((payment) => Number.parseFloat(payment.amount || 0) > 0)
